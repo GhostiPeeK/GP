@@ -1,25 +1,19 @@
 import logging
 import asyncio
-import uuid
-from datetime import datetime
-from aiogram import Bot, Dispatcher, types
+from datetime import datetime, timedelta
+from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import (
-    Message, CallbackQuery, LabeledPrice,
-    PreCheckoutQuery
-)
+from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
 from aiogram.client.bot import DefaultBotProperties
 from config import (
     BOT_TOKEN, ADMIN_ID, GAMES, PAYMENT_AMOUNTS,
     STARS_ENABLED, STARS_TO_RUB,
-    CRYPTO_ENABLED, CRYPTO_API_KEY, CRYPTO_API_SECRET, CRYPTO_CURRENCIES
+    CRYPTO_ENABLED, CRYPTO_API_KEY, CRYPTO_CURRENCIES,
+    REFERRAL_BONUS, REFERRAL_BONUS_STARS
 )
 from database import db
-from keyboards import (
-    get_main_menu, get_games_inline, get_amounts_inline,
-    get_payment_methods_inline, get_crypto_currencies_inline,
-    get_profile_inline, get_admin_inline, get_back_to_main
-)
+from keyboards import *
+from crypto_bot import CryptoBot
 
 # Включаем логирование
 logging.basicConfig(level=logging.INFO)
@@ -28,107 +22,45 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-# Класс для CryptoBot (если нет файла crypto_bot.py)
-class CryptoBot:
-    def __init__(self, api_key, api_secret=None):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.base_url = "https://pay.crypt.bot/api"
-        self.pending_payments = {}
-    
-    async def create_invoice(self, amount, currency, description, user_id, game_id):
-        """Создает счет в криптовалюте"""
-        import aiohttp
-        
-        url = f"{self.base_url}/createInvoice"
-        
-        headers = {
-            "Crypto-Pay-API-Key": self.api_key,
-            "Content-Type": "application/json"
-        }
-        
-        invoice_id = str(uuid.uuid4())[:8]
-        
-        data = {
-            "asset": currency,
-            "amount": str(amount),
-            "description": description,
-            "paid_btn_name": "openBot",
-            "paid_btn_url": "https://t.me/GhostiPeeKPaY_bot",
-            "expires_in": 3600
-        }
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=data) as resp:
-                    result = await resp.json()
-                    
-                    if result.get("ok"):
-                        invoice = result["result"]
-                        self.pending_payments[invoice["invoice_id"]] = {
-                            "user_id": user_id,
-                            "game_id": game_id,
-                            "amount_crypto": float(amount),
-                            "currency": currency,
-                            "stars_amount": amount * 10,
-                            "created_at": datetime.now(),
-                            "status": "pending"
-                        }
-                        return invoice
-                    else:
-                        logging.error(f"CryptoBot error: {result}")
-                        return None
-        except Exception as e:
-            logging.error(f"CryptoBot exception: {e}")
-            return None
-    
-    async def check_payment(self, invoice_id):
-        """Проверяет статус оплаты"""
-        import aiohttp
-        
-        url = f"{self.base_url}/getInvoices"
-        
-        headers = {
-            "Crypto-Pay-API-Key": self.api_key
-        }
-        
-        params = {
-            "invoice_ids": invoice_id
-        }
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, params=params) as resp:
-                    result = await resp.json()
-                    
-                    if result.get("ok") and result["result"]["items"]:
-                        invoice = result["result"]["items"][0]
-                        return invoice
-        except Exception as e:
-            logging.error(f"Check payment error: {e}")
-        
-        return None
-
 # Инициализация CryptoBot
 if CRYPTO_ENABLED:
-    crypto_bot = CryptoBot(CRYPTO_API_KEY, CRYPTO_API_SECRET)
+    crypto_bot = CryptoBot(CRYPTO_API_KEY)
 else:
     crypto_bot = None
 
 # Хранилище пользователей
 users = {}
 
+# ============================================
+# ОСНОВНЫЕ КОМАНДЫ
+# ============================================
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    """Обработчик команды /start"""
+    """Обработчик команды /start с поддержкой рефералов"""
     user = message.from_user
+    args = message.text.split()
     
-    db.add_user(
+    # Проверяем реферальный код
+    referrer_code = None
+    if len(args) > 1:
+        referrer_code = args[1]
+    
+    # Сохраняем пользователя
+    referral_code = db.add_user(
         user_id=user.id,
         username=user.username,
         first_name=user.first_name,
-        last_name=user.last_name
+        last_name=user.last_name,
+        referrer_code=referrer_code
     )
+    
+    # Если есть реферер, начисляем бонус
+    if referrer_code and REFERRAL_BONUS_STARS > 0:
+        await message.answer(
+            f"🎉 Ты пришел по реферальной ссылке!\n"
+            f"⭐ Бонус {REFERRAL_BONUS_STARS} звезд будет начислен после первой покупки!"
+        )
     
     await message.answer(
         f"👋 <b>Привет, {user.first_name}!</b>\n\n"
@@ -140,9 +72,12 @@ async def cmd_start(message: Message):
         reply_markup=get_main_menu()
     )
 
+# ============================================
+# ОБРАБОТЧИКИ МЕНЮ
+# ============================================
+
 @dp.message(lambda message: message.text == "🎮 Игры")
 async def menu_games(message: Message):
-    """Кнопка Игры"""
     await message.answer(
         "🎮 <b>Выбери игру:</b>",
         reply_markup=get_games_inline()
@@ -150,7 +85,6 @@ async def menu_games(message: Message):
 
 @dp.message(lambda message: message.text == "⭐ Пополнить")
 async def menu_topup(message: Message):
-    """Кнопка Пополнить"""
     await message.answer(
         "🎮 <b>Сначала выбери игру:</b>",
         reply_markup=get_games_inline()
@@ -158,7 +92,6 @@ async def menu_topup(message: Message):
 
 @dp.message(lambda message: message.text == "📊 Профиль")
 async def menu_profile(message: Message):
-    """Кнопка Профиль"""
     user_stats = db.get_user_stats(message.from_user.id)
     
     if user_stats and user_stats['total_payments'] > 0:
@@ -168,6 +101,8 @@ async def menu_profile(message: Message):
             f"👤 Имя: {message.from_user.first_name}\n"
             f"💰 Всего потрачено: {user_stats['total_spent_stars']} ⭐\n"
             f"🛒 Всего покупок: {user_stats['total_payments']}\n"
+            f"👥 Рефералов: {user_stats.get('referrals_count', 0)}\n"
+            f"🎁 Бонусов: {user_stats.get('total_bonus', 0)} ⭐\n"
             f"📅 С нами с: {user_stats['registered_at'][:10]}"
         )
     else:
@@ -181,9 +116,30 @@ async def menu_profile(message: Message):
     
     await message.answer(text, reply_markup=get_profile_inline())
 
+@dp.message(lambda message: message.text == "👥 Рефералы")
+async def menu_referrals(message: Message):
+    user_stats = db.get_user_stats(message.from_user.id)
+    
+    if user_stats and user_stats.get('referral_code'):
+        referral_link = f"https://t.me/{(await bot.get_me()).username}?start={user_stats['referral_code']}"
+        
+        text = (
+            f"👥 <b>Реферальная программа</b>\n\n"
+            f"🔗 Твоя ссылка:\n"
+            f"<code>{referral_link}</code>\n\n"
+            f"🎁 За каждого друга ты получаешь {REFERRAL_BONUS}% от его покупок\n"
+            f"⭐ Бонус за регистрацию: {REFERRAL_BONUS_STARS} ⭐\n\n"
+            f"📊 Статистика:\n"
+            f"• Приглашено: {user_stats.get('referrals_count', 0)} чел\n"
+            f"• Заработано: {user_stats.get('total_bonus', 0)} ⭐"
+        )
+        
+        await message.answer(text, reply_markup=get_referral_inline(user_stats['referral_code']))
+    else:
+        await message.answer("❌ Ошибка загрузки реферального кода")
+
 @dp.message(lambda message: message.text == "❓ Помощь")
 async def menu_help(message: Message):
-    """Кнопка Помощь"""
     text = (
         "❓ <b>Помощь</b>\n\n"
         "🎮 <b>Как пополнить игру?</b>\n"
@@ -195,6 +151,8 @@ async def menu_help(message: Message):
         "💎 <b>Способы оплаты:</b>\n"
         "⭐ Telegram Stars - быстро и удобно\n"
         "₿ Криптовалюта - USDT, TON, BTC\n\n"
+        "👥 <b>Рефералы:</b>\n"
+        "Приводи друзей и получай {REFERRAL_BONUS}% от их покупок\n\n"
         "⏱ <b>Сколько ждать?</b>\n"
         "Пополнение приходит в течение 1-2 минут\n\n"
         "📞 <b>Связь с поддержкой:</b>\n"
@@ -203,19 +161,8 @@ async def menu_help(message: Message):
     
     await message.answer(text, reply_markup=get_back_to_main())
 
-@dp.message(lambda message: message.text == "👥 Рефералы")
-async def menu_referrals(message: Message):
-    """Кнопка Рефералы"""
-    await message.answer(
-        "👥 <b>Реферальная программа</b>\n\n"
-        "🚀 Скоро тут будет реферальная система!\n"
-        "Приводи друзей и получай бонусы.",
-        reply_markup=get_back_to_main()
-    )
-
 @dp.message(lambda message: message.text == "📞 Контакты")
 async def menu_contacts(message: Message):
-    """Кнопка Контакты"""
     text = (
         "📞 <b>Контакты</b>\n\n"
         "👨‍💻 Админ: @твой_username\n"
@@ -226,11 +173,23 @@ async def menu_contacts(message: Message):
     
     await message.answer(text, reply_markup=get_back_to_main())
 
+# ============================================
+# ОБРАБОТЧИКИ ВЫБОРА
+# ============================================
+
 @dp.callback_query(lambda c: c.data.startswith('game_'))
 async def process_game_selection(callback: CallbackQuery):
-    """Выбор игры"""
     game_id = callback.data.replace('game_', '')
-    game_name = GAMES[game_id]
+    game_data = GAMES.get(game_id, {})
+    game_name = game_data.get('name', "Неизвестная игра")
+    
+    if not game_data.get('enabled', True):
+        await callback.message.edit_text(
+            f"❌ Игра временно недоступна",
+            reply_markup=get_back_to_main()
+        )
+        await callback.answer()
+        return
     
     users[callback.from_user.id] = {'game': game_id, 'game_name': game_name}
     
@@ -243,13 +202,13 @@ async def process_game_selection(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith('amount_'))
 async def process_amount(callback: CallbackQuery):
-    """Выбор суммы"""
     parts = callback.data.split('_')
     game_id = parts[1]
     amount_stars = int(parts[2])
     
     user_id = callback.from_user.id
-    game_name = GAMES.get(game_id, "Неизвестная игра")
+    game_data = GAMES.get(game_id, {})
+    game_name = game_data.get('name', "Неизвестная игра")
     
     if user_id not in users:
         users[user_id] = {}
@@ -259,54 +218,53 @@ async def process_amount(callback: CallbackQuery):
     
     rub_amount = amount_stars * STARS_TO_RUB
     
+    # Запрашиваем аккаунт в игре
     await callback.message.edit_text(
         f"🎮 <b>Игра:</b> {game_name}\n"
         f"💰 <b>Сумма:</b> {amount_stars} ⭐ (~{rub_amount:.0f} руб)\n\n"
+        f"📝 <b>Введи свой ID или ник в игре:</b>\n"
+        f"(Например: 123456789 или NickName)",
+        reply_markup=None
+    )
+    users[user_id]['awaiting_account'] = True
+    await callback.answer()
+
+@dp.message(lambda message: message.from_user.id in users and users[message.from_user.id].get('awaiting_account'))
+async def process_account(message: Message):
+    user_id = message.from_user.id
+    account = message.text.strip()
+    
+    if not account:
+        await message.answer("❌ Введи корректный ID или ник")
+        return
+    
+    users[user_id]['account'] = account
+    users[user_id]['awaiting_account'] = False
+    
+    game_id = users[user_id]['game']
+    amount_stars = users[user_id]['amount']
+    game_name = users[user_id]['game_name']
+    rub_amount = amount_stars * STARS_TO_RUB
+    
+    await message.answer(
+        f"🎮 <b>Игра:</b> {game_name}\n"
+        f"💰 <b>Сумма:</b> {amount_stars} ⭐ (~{rub_amount:.0f} руб)\n"
+        f"👤 <b>Аккаунт:</b> {account}\n\n"
         f"👇 <b>Выбери способ оплаты:</b>",
         reply_markup=get_payment_methods_inline(game_id, amount_stars)
     )
-    await callback.answer()
 
-@dp.callback_query(lambda c: c.data.startswith('back_to_amounts_'))
-async def back_to_amounts(callback: CallbackQuery):
-    """Возврат к выбору суммы"""
-    game_id = callback.data.replace('back_to_amounts_', '')
-    game_name = GAMES.get(game_id, "Неизвестная игра")
-    
-    await callback.message.edit_text(
-        f"🎮 <b>Игра:</b> {game_name}\n"
-        f"💰 <b>Выбери сумму в ⭐ Stars:</b>",
-        reply_markup=get_amounts_inline(game_id)
-    )
-    await callback.answer()
+# ============================================
+# ОБРАБОТЧИКИ ОПЛАТЫ
+# ============================================
 
-@dp.callback_query(lambda c: c.data.startswith('back_to_payment_'))
-async def back_to_payment(callback: CallbackQuery):
-    """Возврат к выбору способа оплаты"""
-    parts = callback.data.split('_')
-    game_id = parts[3]
-    amount = int(parts[4])
-    game_name = GAMES.get(game_id, "Неизвестная игра")
-    
-    rub_amount = amount * STARS_TO_RUB
-    
-    await callback.message.edit_text(
-        f"🎮 <b>Игра:</b> {game_name}\n"
-        f"💰 <b>Сумма:</b> {amount} ⭐ (~{rub_amount:.0f} руб)\n\n"
-        f"👇 <b>Выбери способ оплаты:</b>",
-        reply_markup=get_payment_methods_inline(game_id, amount)
-    )
-    await callback.answer()
-
-# Обработчик для Stars
 @dp.callback_query(lambda c: c.data.startswith('pay_stars_'))
 async def pay_with_stars(callback: CallbackQuery):
-    """Оплата Telegram Stars"""
     parts = callback.data.split('_')
     game_id = parts[2]
     amount_stars = int(parts[3])
     user_id = callback.from_user.id
-    game_name = GAMES.get(game_id, "Неизвестная игра")
+    game_name = GAMES.get(game_id, {}).get('name', "Неизвестная игра")
     
     prices = [LabeledPrice(label=f"Пополнение {game_name}", amount=amount_stars)]
     
@@ -321,14 +279,12 @@ async def pay_with_stars(callback: CallbackQuery):
     )
     await callback.answer()
 
-# Обработчик для крипты
 @dp.callback_query(lambda c: c.data.startswith('pay_crypto_'))
 async def pay_with_crypto(callback: CallbackQuery):
-    """Оплата криптовалютой"""
     parts = callback.data.split('_')
     game_id = parts[2]
     amount_stars = int(parts[3])
-    game_name = GAMES.get(game_id, "Неизвестная игра")
+    game_name = GAMES.get(game_id, {}).get('name', "Неизвестная игра")
     
     rub_amount = amount_stars * STARS_TO_RUB
     
@@ -343,13 +299,13 @@ async def pay_with_crypto(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith('crypto_'))
 async def process_crypto_currency(callback: CallbackQuery):
-    """Выбор криптовалюты и создание счета"""
     parts = callback.data.split('_')
     currency = parts[1]
     game_id = parts[2]
     amount_stars = int(parts[3])
     user_id = callback.from_user.id
-    game_name = GAMES.get(game_id, "Неизвестная игра")
+    game_data = GAMES.get(game_id, {})
+    game_name = game_data.get('name', "Неизвестная игра")
     
     if not crypto_bot:
         await callback.message.edit_text(
@@ -361,10 +317,11 @@ async def process_crypto_currency(callback: CallbackQuery):
     
     rub_amount = amount_stars * STARS_TO_RUB
     
+    # Конвертация в крипту
     rates = {
-        'USDT': rub_amount / 90,  # 1 USDT ≈ 90 руб
-        'TON': rub_amount / 450,   # 1 TON ≈ 450 руб
-        'BTC': rub_amount / 5400000  # 1 BTC ≈ 5400000 руб
+        'USDT': rub_amount / 90,
+        'TON': rub_amount / 450,
+        'BTC': rub_amount / 5400000
     }
     
     crypto_amount = round(rates.get(currency, rub_amount), 6)
@@ -384,8 +341,6 @@ async def process_crypto_currency(callback: CallbackQuery):
         users[user_id]['crypto_amount'] = crypto_amount
         users[user_id]['stars_amount'] = amount_stars
         
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Оплатить", url=invoice["pay_url"])],
             [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"check_crypto_{invoice['invoice_id']}")],
@@ -396,7 +351,7 @@ async def process_crypto_currency(callback: CallbackQuery):
             f"₿ <b>Счет на оплату</b>\n\n"
             f"🎮 Игра: {game_name}\n"
             f"💰 Сумма: {amount_stars} ⭐\n"
-            f"💎 Криптовалюта: {currency}\n"
+            f"💎 Валюта: {currency}\n"
             f"💵 К оплате: {crypto_amount} {currency}\n\n"
             f"⬇️ Нажми кнопку ниже для оплаты:",
             reply_markup=keyboard
@@ -409,124 +364,16 @@ async def process_crypto_currency(callback: CallbackQuery):
     
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data.startswith('check_crypto_'))
-async def check_crypto_payment(callback: CallbackQuery):
-    """Проверка оплаты криптовалюты"""
-    invoice_id = callback.data.replace('check_crypto_', '')
-    user_id = callback.from_user.id
-    
-    if not crypto_bot:
-        await callback.answer("❌ Сервис недоступен", show_alert=True)
-        return
-    
-    invoice = await crypto_bot.check_payment(invoice_id)
-    
-    if invoice and invoice.get("status") == "paid":
-        if user_id in users and 'crypto_invoice' in users[user_id]:
-            game_id = users[user_id]['game']
-            game_name = users[user_id]['game_name']
-            amount_stars = users[user_id]['stars_amount']
-            currency = users[user_id]['crypto_currency']
-            crypto_amount = users[user_id]['crypto_amount']
-            
-            db.add_payment(
-                user_id=user_id,
-                game_id=game_id,
-                game_name=game_name,
-                amount_stars=amount_stars,
-                amount_real=crypto_amount,
-                currency=currency,
-                payment_method="crypto",
-                charge_id=f"crypto_{invoice_id}"
-            )
-            
-            await callback.message.edit_text(
-                f"✅ <b>ОПЛАЧЕНО!</b>\n\n"
-                f"⭐ Сумма: {amount_stars} Stars\n"
-                f"₿ Оплачено: {crypto_amount} {currency}\n"
-                f"🎮 Игра: {game_name}\n\n"
-                f"🔜 В течение 1-2 минут баланс будет зачислен.\n"
-                f"Спасибо за покупку, бро! 💪",
-                reply_markup=get_back_to_main()
-            )
-            
-            logging.info(f"CRYPTO PAYMENT: User={user_id}, Game={game_id}, Stars={amount_stars}")
-    else:
-        await callback.answer("⏳ Платеж еще не найден. Нажми через минуту.", show_alert=True)
-    
-    await callback.answer()
+# ============================================
+# ОБРАБОТЧИКИ ПЛАТЕЖЕЙ
+# ============================================
 
-# Обработчик для карт (заготовка)
-@dp.callback_query(lambda c: c.data.startswith('pay_card_'))
-async def pay_with_card(callback: CallbackQuery):
-    """Оплата банковской картой (в разработке)"""
-    parts = callback.data.split('_')
-    game_id = parts[2]
-    amount_stars = int(parts[3])
-    game_name = GAMES.get(game_id, "Неизвестная игра")
-    
-    rub_amount = amount_stars * STARS_TO_RUB
-    
-    await callback.message.edit_text(
-        f"💳 <b>Оплата банковской картой</b>\n\n"
-        f"🎮 Игра: {game_name}\n"
-        f"💰 Сумма: {amount_stars} ⭐\n"
-        f"💵 К оплате: {rub_amount:.0f} RUB\n\n"
-        f"🚀 Функция в разработке!\n"
-        f"Скоро можно будет платить картой.\n\n"
-        f"Пока воспользуйся Stars или криптовалютой.",
-        reply_markup=get_back_to_main()
-    )
-    await callback.answer()
-
-# Обработчики навигации
-@dp.callback_query(lambda c: c.data == "back_to_main")
-async def back_to_main(callback: CallbackQuery):
-    """Возврат в главное меню"""
-    await callback.message.answer(
-        "🏠 <b>Главное меню</b>\n\n"
-        "👇 Выбери действие:",
-        reply_markup=get_main_menu()
-    )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "back_to_games")
-async def back_to_games(callback: CallbackQuery):
-    """Возврат к выбору игр"""
-    await callback.message.edit_text(
-        "🎮 <b>Выбери игру:</b>",
-        reply_markup=get_games_inline()
-    )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "to_games")
-async def to_games(callback: CallbackQuery):
-    """Переход к играм"""
-    await callback.message.answer(
-        "🎮 <b>Выбери игру:</b>",
-        reply_markup=get_games_inline()
-    )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "profile_history")
-async def profile_history(callback: CallbackQuery):
-    """История покупок"""
-    await callback.message.answer(
-        "📊 <b>История покупок</b>\n\n"
-        "🚀 Функция в разработке!",
-        reply_markup=get_back_to_main()
-    )
-    await callback.answer()
-
-# Обработчики предпроверки платежей
 @dp.pre_checkout_query()
 async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
-    """Обязательный обработчик предпроверки"""
     await pre_checkout_query.answer(ok=True)
 
 @dp.message(lambda message: message.successful_payment is not None)
 async def on_successful_payment(message: Message):
-    """Обработчик успешного платежа Stars"""
     payment = message.successful_payment
     amount_stars = payment.total_amount
     payload = payment.invoice_payload
@@ -534,9 +381,10 @@ async def on_successful_payment(message: Message):
     
     parts = payload.split('_')
     game_id = parts[1] if len(parts) > 1 else "unknown"
-    game_name = GAMES.get(game_id, 'Неизвестная игра')
+    game_name = GAMES.get(game_id, {}).get('name', 'Неизвестная игра')
     
-    db.add_payment(
+    # Сохраняем платеж
+    payment_id = db.add_payment(
         user_id=message.from_user.id,
         game_id=game_id,
         game_name=game_name,
@@ -547,23 +395,119 @@ async def on_successful_payment(message: Message):
         charge_id=charge_id
     )
     
+    # Проверяем реферала
+    user_stats = db.get_user_stats(message.from_user.id)
+    if user_stats and user_stats.get('referrer_id'):
+        db.process_referral_bonus(
+            payment_id=payment_id,
+            referrer_id=user_stats['referrer_id'],
+            referral_id=message.from_user.id,
+            amount_stars=amount_stars,
+            bonus_percent=REFERRAL_BONUS
+        )
+    
     await message.answer(
         f"✅ <b>ОПЛАЧЕНО!</b>\n\n"
         f"⭐ Сумма: {amount_stars} Telegram Stars\n"
         f"🎮 Игра: {game_name}\n"
         f"💰 Статус: <b>Пополнение выполняется</b>\n\n"
         f"🔜 В течение 1-2 минут баланс будет зачислен.\n"
-        f"Спасибо за покупку, бро! 💪\n\n"
-        f"🎫 ID: <code>{charge_id}</code>",
+        f"Спасибо за покупку, бро! 💪",
         reply_markup=get_back_to_main()
     )
     
     logging.info(f"STARS PAYMENT: User {message.from_user.id} | Game: {game_id} | Stars: {amount_stars}")
 
-# Админские команды
+# ============================================
+# ОБРАБОТЧИКИ НАВИГАЦИИ
+# ============================================
+
+@dp.callback_query(lambda c: c.data == "back_to_main")
+async def back_to_main(callback: CallbackQuery):
+    await callback.message.answer(
+        "🏠 <b>Главное меню</b>\n\n"
+        "👇 Выбери действие:",
+        reply_markup=get_main_menu()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "back_to_games")
+async def back_to_games(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🎮 <b>Выбери игру:</b>",
+        reply_markup=get_games_inline()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "to_games")
+async def to_games(callback: CallbackQuery):
+    await callback.message.answer(
+        "🎮 <b>Выбери игру:</b>",
+        reply_markup=get_games_inline()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith('back_to_amounts_'))
+async def back_to_amounts(callback: CallbackQuery):
+    game_id = callback.data.replace('back_to_amounts_', '')
+    game_name = GAMES.get(game_id, {}).get('name', "Неизвестная игра")
+    
+    await callback.message.edit_text(
+        f"🎮 <b>Игра:</b> {game_name}\n"
+        f"💰 <b>Выбери сумму в ⭐ Stars:</b>",
+        reply_markup=get_amounts_inline(game_id)
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith('back_to_payment_'))
+async def back_to_payment(callback: CallbackQuery):
+    parts = callback.data.split('_')
+    game_id = parts[3]
+    amount = int(parts[4])
+    game_name = GAMES.get(game_id, {}).get('name', "Неизвестная игра")
+    
+    rub_amount = amount * STARS_TO_RUB
+    
+    await callback.message.edit_text(
+        f"🎮 <b>Игра:</b> {game_name}\n"
+        f"💰 <b>Сумма:</b> {amount} ⭐ (~{rub_amount:.0f} руб)\n\n"
+        f"👇 <b>Выбери способ оплаты:</b>",
+        reply_markup=get_payment_methods_inline(game_id, amount)
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "my_referrals")
+async def my_referrals(callback: CallbackQuery):
+    referrals = db.get_referrals(callback.from_user.id)
+    
+    if not referrals:
+        await callback.message.answer(
+            "👥 У тебя пока нет рефералов.\n"
+            "Поделись ссылкой и получай бонусы!",
+            reply_markup=get_back_to_main()
+        )
+        await callback.answer()
+        return
+    
+    text = "👥 <b>Твои рефералы:</b>\n\n"
+    for ref in referrals[:10]:
+        text += f"• {ref.get('first_name', 'Аноним')}"
+        if ref.get('username'):
+            text += f" (@{ref['username']})"
+        text += f" - {ref.get('total_spent_stars', 0)} ⭐\n"
+    
+    if len(referrals) > 10:
+        text += f"\n...и еще {len(referrals) - 10}"
+    
+    await callback.message.answer(text, reply_markup=get_back_to_main())
+    await callback.answer()
+
+# ============================================
+# АДМИН-КОМАНДЫ
+# ============================================
+
 @dp.message(Command("admin"))
 async def cmd_admin(message: Message):
-    """Команда для входа в админку"""
     if message.from_user.id != ADMIN_ID:
         await message.answer("⛔ Доступ запрещен")
         return
@@ -576,58 +520,53 @@ async def cmd_admin(message: Message):
 
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
-    """Статистика для админа"""
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔ Доступ запрещен", show_alert=True)
         return
     
     games_stats = db.get_game_stats()
-    recent = db.get_recent_payments(5)
+    recent = db.get_recent_payments(10)
+    daily = db.get_daily_stats(7)
     
     text = "👑 <b>Админ панель - Статистика</b>\n\n"
     
-    if games_stats:
-        text += "<b>По играм:</b>\n"
-        for game in games_stats:
-            text += f"• {game['game_name']}: {game['total_payments']} покупок | {game['total_stars']} ⭐\n"
+    # Общая статистика
+    total_stars = sum(g['total_stars'] for g in games_stats) if games_stats else 0
+    total_payments = sum(g['total_payments'] for g in games_stats) if games_stats else 0
     
-    text += "\n<b>Последние 5 платежей:</b>\n"
-    if recent:
-        for p in recent:
-            text += f"• {p['game_name']}: {p['amount_stars']} ⭐ ({p['created_at'][:16]})\n"
+    text += f"💰 Всего звезд: {total_stars} ⭐\n"
+    text += f"🛒 Всего покупок: {total_payments}\n\n"
+    
+    # Статистика по дням
+    text += "<b>За последние 7 дней:</b>\n"
+    for day in daily:
+        text += f"• {day['date']}: {day['payments']} покупок | {day['stars']} ⭐\n"
+    
+    text += "\n<b>По играм:</b>\n"
+    for game in games_stats:
+        text += f"• {game['game_name']}: {game['total_payments']} покупок | {game['total_stars']} ⭐\n"
+    
+    text += "\n<b>Последние 10 платежей:</b>\n"
+    for p in recent:
+        name = p.get('first_name', 'Unknown')
+        text += f"• {p['game_name']}: {p['amount_stars']} ⭐ ({name})\n"
     
     await callback.message.answer(text, reply_markup=get_admin_inline())
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data == "admin_payments")
-async def admin_payments(callback: CallbackQuery):
-    """Все платежи"""
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещен", show_alert=True)
-        return
-    
-    await callback.message.answer(
-        "💳 <b>Все платежи</b>\n\n"
-        "🚀 Функция в разработке!\n"
-        "Скоро можно будет смотреть все транзакции.",
-        reply_markup=get_admin_inline()
-    )
-    await callback.answer()
-
-@dp.message(Command("stats"))
-async def cmd_stats(message: Message):
-    """Команда статистики"""
-    await menu_profile(message)
+# ============================================
+# ЗАПУСК БОТА
+# ============================================
 
 async def main():
-    """Запуск бота"""
     logging.info("Бот запускается...")
     
     try:
         me = await bot.get_me()
         logging.info(f"Бот @{me.username} успешно запущен!")
         print(f"\n✅ Бот @{me.username} запущен и готов к работе!")
-        print("📱 Открой Telegram и напиши /start\n")
+        print("📱 Открой Telegram и напиши /start")
+        print("👑 Админ-панель: /admin\n")
     except Exception as e:
         logging.error(f"Ошибка подключения: {e}")
         print(f"\n❌ Ошибка: {e}")
