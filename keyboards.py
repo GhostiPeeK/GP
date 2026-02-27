@@ -1,6 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
-from config import GAMES, PAYMENT_AMOUNTS
+from config import GAMES, PAYMENT_AMOUNTS, STARS_ENABLED, CRYPTO_ENABLED, CARDS_ENABLED
 
 def get_main_menu():
     """Главное меню (снизу)"""
@@ -32,16 +32,56 @@ def get_games_inline():
     
     return builder.as_markup()
 
-def get_amounts_inline():
+def get_amounts_inline(game_id):
     """Инлайн клавиатура с суммами"""
     builder = InlineKeyboardBuilder()
     
     for amount in PAYMENT_AMOUNTS:
-        builder.button(text=f"{amount} ⭐", callback_data=f"amount_{amount}")
+        builder.button(text=f"{amount} ⭐", callback_data=f"amount_{game_id}_{amount}")
     
     builder.adjust(3)
     builder.row(
         InlineKeyboardButton(text="🔙 К играм", callback_data="back_to_games"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"),
+        width=2
+    )
+    
+    return builder.as_markup()
+
+def get_payment_methods_inline(game_id, amount):
+    """Клавиатура с выбором способа оплаты"""
+    builder = InlineKeyboardBuilder()
+    
+    if STARS_ENABLED:
+        builder.button(text="⭐ Telegram Stars", callback_data=f"pay_stars_{game_id}_{amount}")
+    
+    if CRYPTO_ENABLED:
+        builder.button(text="₿ Криптовалюта", callback_data=f"pay_crypto_{game_id}_{amount}")
+    
+    if CARDS_ENABLED:
+        builder.button(text="💳 Банковская карта", callback_data=f"pay_card_{game_id}_{amount}")
+    
+    builder.adjust(1)
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_amounts_{game_id}"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"),
+        width=2
+    )
+    
+    return builder.as_markup()
+
+def get_crypto_currencies_inline(game_id, amount):
+    """Выбор криптовалюты"""
+    from config import CRYPTO_CURRENCIES
+    
+    builder = InlineKeyboardBuilder()
+    
+    for currency in CRYPTO_CURRENCIES:
+        builder.button(text=currency, callback_data=f"crypto_{currency}_{game_id}_{amount}")
+    
+    builder.adjust(1)
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_payment_{game_id}_{amount}"),
         InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"),
         width=2
     )
