@@ -1,5 +1,5 @@
 # Токен бота от @BotFather
-BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"  # ВСТАВЬ СВОЙ ТОКЕН!
+BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"
 
 # Твой Telegram ID (для админки)
 ADMIN_ID = 2091630272  # ЗАМЕНИ НА СВОЙ ID!
@@ -8,38 +8,104 @@ ADMIN_ID = 2091630272  # ЗАМЕНИ НА СВОЙ ID!
 # НАСТРОЙКИ ПЛАТЕЖЕЙ
 # ============================================
 
-# 1. Telegram Stars (уже работает)
 STARS_ENABLED = True
-STARS_TO_RUB = 1.79  # 1 звезда ≈ 1.79 руб (примерный курс)
+STARS_TO_RUB = 1.79
 
-# 2. CryptoBot (криптовалюта)
-# Зарегистрируйся в @CryptoBot → My Apps → Create App
 CRYPTO_ENABLED = True
-CRYPTO_API_KEY = "ТВОЙ_API_KEY"  # ВСТАВЬ СВОЙ КЛЮЧ!
-CRYPTO_API_SECRET = "ТВОЙ_API_SECRET"  # ВСТАВЬ СВОЙ СЕКРЕТ!
-CRYPTO_CURRENCIES = ['USDT', 'TON', 'BTC']  # Доступные валюты
+CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"  # Из @CryptoBot
+CRYPTO_API_SECRET = ""
+CRYPTO_CURRENCIES = ['USDT', 'TON', 'BTC']
 
-# 3. ЮKassa (банковские карты) - пока в разработке
-CARDS_ENABLED = False
-YOOKASSA_SHOP_ID = ""
-YOOKASSA_SECRET_KEY = ""
+CARDS_ENABLED = False  # Пока не надо
 
 # ============================================
-# НАСТРОЙКИ БОТА
+# НАСТРОЙКИ РЕФЕРАЛЬНОЙ СИСТЕМЫ
 # ============================================
 
-# Суммы в ЗВЕЗДАХ (Telegram Stars)
-# Для крипты и карт будет автоматический пересчет
+REFERRAL_BONUS = 10  # % от покупки реферала
+REFERRAL_BONUS_STARS = 5  # Бонус за регистрацию по ссылке (в звездах)
+
+# ============================================
+# API ИГР (реальные ключи)
+# ============================================
+
+# PUBG Mobile (UC)
+PUBG_API_KEY = "ТВОЙ_PUBG_API_KEY"
+PUBG_API_URL = "https://api.pubg.com/v1/"
+
+# Brawl Stars (гемы)
+BRAWL_API_KEY = "ТВОЙ_BRAWL_API_KEY"
+BRAWL_API_URL = "https://api.brawlstars.com/v1/"
+
+# Steam
+STEAM_API_KEY = "ТВОЙ_STEAM_API_KEY"
+STEAM_API_URL = "https://api.steampowered.com/"
+
+# Free Fire
+FREE_FIRE_API_KEY = "ТВОЙ_FREE_FIRE_API_KEY"
+FREE_FIRE_API_URL = "https://api.freefire.com/v1/"
+
+# ============================================
+# НАСТРОЙКИ ИГР
+# ============================================
+
+# Суммы в ЗВЕЗДАХ
 PAYMENT_AMOUNTS = [1, 3, 5, 10, 25, 50, 100, 250]
 
-# Список игр
+# Список игр с расширенными данными
 GAMES = {
-    'pubg': 'PUBG Mobile (UC)',
-    'brawl': 'Brawl Stars (гемы)',
-    'steam': 'Steam Balance',
-    'freefire': 'Free Fire (алмазы)',
-    'genshin': 'Genshin Impact (кристаллы)',
-    'cod': 'Call of Duty Mobile (CP)',
-    'mlbb': 'Mobile Legends (алмазы)',
-    'fortnite': 'Fortnite (V-bucks)'
+    'pubg': {
+        'name': 'PUBG Mobile (UC)',
+        'api_key': PUBG_API_KEY,
+        'api_url': PUBG_API_URL,
+        'currency': 'UC',
+        'min_amount': 1,
+        'max_amount': 10000,
+        'enabled': True
+    },
+    'brawl': {
+        'name': 'Brawl Stars (гемы)',
+        'api_key': BRAWL_API_KEY,
+        'api_url': BRAWL_API_URL,
+        'currency': 'гемы',
+        'min_amount': 1,
+        'max_amount': 5000,
+        'enabled': True
+    },
+    'steam': {
+        'name': 'Steam Balance',
+        'api_key': STEAM_API_KEY,
+        'api_url': STEAM_API_URL,
+        'currency': 'руб',
+        'min_amount': 10,
+        'max_amount': 5000,
+        'enabled': True
+    },
+    'freefire': {
+        'name': 'Free Fire (алмазы)',
+        'api_key': FREE_FIRE_API_KEY,
+        'api_url': FREE_FIRE_API_URL,
+        'currency': 'алмазы',
+        'min_amount': 1,
+        'max_amount': 10000,
+        'enabled': True
+    },
+    'genshin': {
+        'name': 'Genshin Impact (кристаллы)',
+        'api_key': '',
+        'api_url': '',
+        'currency': 'кристаллы',
+        'min_amount': 1,
+        'max_amount': 5000,
+        'enabled': False  # Пока нет API
+    },
+    'cod': {
+        'name': 'Call of Duty Mobile (CP)',
+        'api_key': '',
+        'api_url': '',
+        'currency': 'CP',
+        'min_amount': 1,
+        'max_amount': 5000,
+        'enabled': False
+    }
 }
