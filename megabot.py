@@ -41,7 +41,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 # ============================================
 
 # Токен бота от @BotFather
-BOT_TOKEN = "8339352233:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"  # ЗАМЕНИ НА СВОЙ!
+BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"  # ЗАМЕНИ НА СВОЙ!
 
 # Твой Telegram ID (для админки)
 ADMIN_ID = 2091630272  # ЗАМЕНИ НА СВОЙ!
