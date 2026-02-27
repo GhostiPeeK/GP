@@ -1,5 +1,5 @@
 # Токен бота от @BotFather
-BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"  # ВСТАВЬ СВОЙ ТОКЕН
+BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"  # ВСТАВЬ СВОЙ ТОКЕН!
 
 # Для Telegram Stars provider_token не нужен, currency = XTR
 CURRENCY = "XTR"
