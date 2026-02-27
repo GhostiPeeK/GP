@@ -3,29 +3,30 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import GAMES, PAYMENT_AMOUNTS, STARS_ENABLED, CRYPTO_ENABLED, CARDS_ENABLED
 
 def get_main_menu():
-    """Главное меню (снизу)"""
+    """Главное меню"""
     builder = ReplyKeyboardBuilder()
     
     buttons = [
         KeyboardButton(text="🎮 Игры"),
         KeyboardButton(text="⭐ Пополнить"),
         KeyboardButton(text="📊 Профиль"),
-        KeyboardButton(text="❓ Помощь"),
         KeyboardButton(text="👥 Рефералы"),
+        KeyboardButton(text="❓ Помощь"),
         KeyboardButton(text="📞 Контакты")
     ]
     
     builder.add(*buttons)
     builder.adjust(2, 2, 2)
     
-    return builder.as_markup(resize_keyboard=True, input_field_placeholder="Выбери действие...")
+    return builder.as_markup(resize_keyboard=True)
 
 def get_games_inline():
-    """Инлайн клавиатура с играми"""
+    """Клавиатура с играми"""
     builder = InlineKeyboardBuilder()
     
-    for game_id, game_name in GAMES.items():
-        builder.button(text=game_name, callback_data=f"game_{game_id}")
+    for game_id, game_data in GAMES.items():
+        if game_data.get('enabled', True):
+            builder.button(text=game_data['name'], callback_data=f"game_{game_id}")
     
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"))
@@ -33,7 +34,7 @@ def get_games_inline():
     return builder.as_markup()
 
 def get_amounts_inline(game_id):
-    """Инлайн клавиатура с суммами"""
+    """Клавиатура с суммами"""
     builder = InlineKeyboardBuilder()
     
     for amount in PAYMENT_AMOUNTS:
@@ -49,7 +50,7 @@ def get_amounts_inline(game_id):
     return builder.as_markup()
 
 def get_payment_methods_inline(game_id, amount):
-    """Клавиатура с выбором способа оплаты"""
+    """Клавиатура с выбором оплаты"""
     builder = InlineKeyboardBuilder()
     
     if STARS_ENABLED:
@@ -88,8 +89,20 @@ def get_crypto_currencies_inline(game_id, amount):
     
     return builder.as_markup()
 
+def get_referral_inline(referral_code):
+    """Клавиатура для рефералов"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.button(text="📤 Поделиться ссылкой", switch_inline_query=f"Присоединяйся! {referral_code}")
+    builder.button(text="👥 Мои рефералы", callback_data="my_referrals")
+    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
+    
+    builder.adjust(2, 1)
+    
+    return builder.as_markup()
+
 def get_profile_inline():
-    """Инлайн клавиатура для профиля"""
+    """Клавиатура профиля"""
     builder = InlineKeyboardBuilder()
     
     buttons = [
@@ -104,23 +117,25 @@ def get_profile_inline():
     return builder.as_markup()
 
 def get_admin_inline():
-    """Инлайн клавиатура для админа"""
+    """Админ-клавиатура"""
     builder = InlineKeyboardBuilder()
     
     buttons = [
         InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
         InlineKeyboardButton(text="💳 Платежи", callback_data="admin_payments"),
         InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users"),
+        InlineKeyboardButton(text="📊 Графики", callback_data="admin_charts"),
+        InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin_settings"),
         InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
     ]
     
     builder.add(*buttons)
-    builder.adjust(2, 2)
+    builder.adjust(2, 2, 2)
     
     return builder.as_markup()
 
 def get_back_to_main():
-    """Кнопка возврата в главное меню"""
+    """Кнопка возврата"""
     builder = InlineKeyboardBuilder()
     builder.button(text="🏠 Главное меню", callback_data="back_to_main")
     return builder.as_markup()
