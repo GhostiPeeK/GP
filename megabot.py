@@ -50,8 +50,8 @@ ESCROW_TIME = 60  # Время на оплату (минут)
 MIN_AMOUNT = 100  # Минимальная сумма сделки (руб)
 MAX_AMOUNT = 100000  # Максимальная сумма сделки (руб)
 REFERRAL_BONUS = 10  # Бонус рефереру (%)
-SUPPORT_USERNAME = "p2p_support"  # Юзернейм саппорта
-CHANNEL_ID = -1001234567890  # ID твоего канала для ордеров (ЗАМЕНИ НА СВОЙ!)
+SUPPORT_USERNAME = "@GhostiPeeK_2"  # Юзернейм саппорта
+CHANNEL_ID = --1003664296821  # ID твоего канала для ордеров (ЗАМЕНИ НА СВОЙ!)
 
 # ============================================
 # ПЛАТЁЖНЫЕ СИСТЕМЫ
@@ -62,7 +62,7 @@ YOOKASSA_SHOP_ID = "ТВОЙ_SHOP_ID"  # Получи на yookassa.ru
 YOOKASSA_SECRET_KEY = "ТВОЙ_SECRET_KEY"
 
 # CryptoBot (для крипты)
-CRYPTO_API_KEY = "ТВОЙ_API_KEY"  # Получи в @CryptoBot
+CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"  # Получи в @CryptoBot
 
 # Telegram Stars (встроенные)
 STARS_ENABLED = True
