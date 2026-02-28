@@ -3,8 +3,9 @@
 """
 ╔═══════════════════════════════════════════════════════════════╗
 ║              P2P ГЕЙМИНГ МАРКЕТПЛЕЙС 4.0                       ║
-║         С ЗАМОРОЗКОЙ ДЕНЕГ, ОТЗЫВАМИ И ПЛАТЕЖАМИ              ║
+║         С ЗАМОРОЗКОЙ ДЕНЕГ, ОТЗЫВАМИ И КРИПТОЙ                ║
 ║                    🎮 + 💰 = 🔥 + 🔒                           ║
+║                    (БЕЗ ЮKASSA)                                ║
 ╚═══════════════════════════════════════════════════════════════╝
 """
 
@@ -40,6 +41,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"
 ADMIN_ID = 2091630272
+CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"
+CHANNEL_ID = -1001234567890  # ID твоего канала (ЗАМЕНИ НА СВОЙ!)
 
 # ============================================
 # НАСТРОЙКИ ПЛАТФОРМЫ
@@ -50,22 +53,7 @@ ESCROW_TIME = 60  # Время на оплату (минут)
 MIN_AMOUNT = 100  # Минимальная сумма сделки (руб)
 MAX_AMOUNT = 100000  # Максимальная сумма сделки (руб)
 REFERRAL_BONUS = 10  # Бонус рефереру (%)
-SUPPORT_USERNAME = "@GhostiPeeK_2"  # Юзернейм саппорта
-CHANNEL_ID = 1003664296821  # ID твоего канала для ордеров (ЗАМЕНИ НА СВОЙ!)
-
-# ============================================
-# ПЛАТЁЖНЫЕ СИСТЕМЫ
-# ============================================
-
-# ЮKassa (для карт)
-YOOKASSA_SHOP_ID = "000000"
-YOOKASSA_SECRET_KEY = "test_00000000000000000000000000000000"
-# CryptoBot (для крипты)
-CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"  # Получи в @CryptoBot
-
-# Telegram Stars (встроенные)
-STARS_ENABLED = True
-STARS_TO_RUB = 1.79
+SUPPORT_USERNAME = "p2p_support"  # Юзернейм саппорта
 
 # ============================================
 # ИГРЫ
@@ -140,9 +128,9 @@ class Database:
                 rating REAL DEFAULT 5.0,
                 deals_count INTEGER DEFAULT 0,
                 successful_deals INTEGER DEFAULT 0,
-                balance REAL DEFAULT 0,  # Доступные рубли
-                locked_balance REAL DEFAULT 0,  # Замороженные рубли
-                crypto_balance TEXT DEFAULT '{}',  # JSON с балансами крипты
+                balance REAL DEFAULT 0,
+                locked_balance REAL DEFAULT 0,
+                crypto_balance TEXT DEFAULT '{}',
                 is_verified BOOLEAN DEFAULT 0,
                 is_banned BOOLEAN DEFAULT 0,
                 last_active TEXT
@@ -183,8 +171,8 @@ class Database:
                 price REAL,
                 total REAL,
                 commission REAL,
-                escrow_status TEXT DEFAULT 'pending',  # 'pending', 'locked', 'released', 'disputed'
-                payment_status TEXT DEFAULT 'waiting',  # 'waiting', 'paid', 'confirmed'
+                escrow_status TEXT DEFAULT 'pending',
+                payment_status TEXT DEFAULT 'waiting',
                 created_at TEXT,
                 expires_at TEXT,
                 completed_at TEXT,
@@ -198,11 +186,11 @@ class Database:
             CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
-                type TEXT,  # 'deposit', 'withdraw'
+                type TEXT,
                 amount REAL,
                 currency TEXT,
-                method TEXT,  # 'card', 'crypto', 'stars', 'sbp'
-                status TEXT DEFAULT 'pending',  # 'pending', 'success', 'failed'
+                method TEXT,
+                status TEXT DEFAULT 'pending',
                 payment_id TEXT UNIQUE,
                 created_at TEXT,
                 completed_at TEXT
@@ -238,7 +226,6 @@ class Database:
     # ========== УПРАВЛЕНИЕ БАЛАНСАМИ ==========
     
     def get_balance(self, user_id):
-        """Получает баланс пользователя"""
         self.cursor.execute('SELECT balance, locked_balance, crypto_balance FROM users WHERE user_id = ?', (user_id,))
         row = self.cursor.fetchone()
         if row:
@@ -250,14 +237,10 @@ class Database:
         return {'balance': 0, 'locked': 0, 'crypto': {}}
     
     def add_balance(self, user_id, amount):
-        """Добавляет рубли на баланс"""
-        self.cursor.execute('''
-            UPDATE users SET balance = balance + ? WHERE user_id = ?
-        ''', (amount, user_id))
+        self.cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id))
         self.conn.commit()
     
     def lock_funds(self, user_id, amount):
-        """Замораживает рубли у пользователя"""
         self.cursor.execute('''
             UPDATE users 
             SET balance = balance - ?,
@@ -268,7 +251,6 @@ class Database:
         return self.cursor.rowcount > 0
     
     def release_funds(self, user_id, amount):
-        """Размораживает рубли"""
         self.cursor.execute('''
             UPDATE users 
             SET locked_balance = locked_balance - ?
@@ -277,22 +259,18 @@ class Database:
         self.conn.commit()
     
     def transfer_funds(self, from_id, to_id, amount, commission):
-        """Переводит рубли от одного пользователя другому (с комиссией)"""
-        # Размораживаем у покупателя
         self.cursor.execute('''
             UPDATE users 
             SET locked_balance = locked_balance - ?
             WHERE user_id = ? AND locked_balance >= ?
         ''', (amount, from_id, amount))
         
-        # Начисляем продавцу (минус комиссия)
         self.cursor.execute('''
             UPDATE users 
             SET balance = balance + ?
             WHERE user_id = ?
         ''', (amount - commission, to_id))
         
-        # Начисляем комиссию админу
         self.cursor.execute('''
             UPDATE users 
             SET balance = balance + ?
@@ -464,7 +442,6 @@ class Database:
     # ========== СДЕЛКИ С ЭСКРОУ ==========
     
     def create_secure_trade(self, order_id, buyer_id, amount):
-        """Создаёт сделку с заморозкой денег"""
         order = self.get_order(order_id)
         if not order or order['status'] != 'active':
             return None
@@ -475,12 +452,10 @@ class Database:
         total = amount * order['price']
         commission = total * (COMMISSION / 100)
         
-        # Проверяем баланс покупателя
         buyer = self.get_user(buyer_id)
         if not buyer or buyer['balance'] < total:
             return None
         
-        # Замораживаем рубли у покупателя
         self.cursor.execute('''
             UPDATE users 
             SET balance = balance - ?,
@@ -491,7 +466,6 @@ class Database:
         if self.cursor.rowcount == 0:
             return None
         
-        # Создаём сделку
         self.cursor.execute('''
             INSERT INTO trades 
             (order_id, seller_id, buyer_id, amount, price, total, commission, 
@@ -505,7 +479,6 @@ class Database:
         
         trade_id = self.cursor.lastrowid
         
-        # Обновляем ордер
         new_amount = order['amount'] - amount
         self.update_order_amount(order_id, new_amount)
         
@@ -560,19 +533,14 @@ class Database:
         return trades
     
     def confirm_payment(self, trade_id):
-        """Покупатель подтверждает оплату"""
-        self.cursor.execute('''
-            UPDATE trades SET payment_status = 'paid' WHERE id = ?
-        ''', (trade_id,))
+        self.cursor.execute('UPDATE trades SET payment_status = "paid" WHERE id = ?', (trade_id,))
         self.conn.commit()
     
     def complete_trade(self, trade_id):
-        """Продавец подтверждает получение денег"""
         trade = self.get_trade(trade_id)
         if not trade:
             return False
         
-        # Переводим деньги продавцу (с комиссией)
         self.cursor.execute('''
             UPDATE users 
             SET locked_balance = locked_balance - ?,
@@ -580,14 +548,12 @@ class Database:
             WHERE user_id = ?
         ''', (trade['total'], trade['total'] - trade['commission'], trade['seller_id']))
         
-        # Комиссия админу
         self.cursor.execute('''
             UPDATE users 
             SET balance = balance + ?
             WHERE user_id = ?
         ''', (trade['commission'], ADMIN_ID))
         
-        # Обновляем сделку
         self.cursor.execute('''
             UPDATE trades 
             SET escrow_status = 'released', 
@@ -596,7 +562,6 @@ class Database:
             WHERE id = ?
         ''', (datetime.now().isoformat(), trade_id))
         
-        # Обновляем статистику
         self.cursor.execute('''
             UPDATE users 
             SET deals_count = deals_count + 1,
@@ -608,12 +573,10 @@ class Database:
         return True
     
     def cancel_trade(self, trade_id):
-        """Отмена сделки (возврат денег)"""
         trade = self.get_trade(trade_id)
         if not trade:
             return False
         
-        # Возвращаем деньги покупателю
         self.cursor.execute('''
             UPDATE users 
             SET locked_balance = locked_balance - ?,
@@ -621,18 +584,13 @@ class Database:
             WHERE user_id = ?
         ''', (trade['total'], trade['total'], trade['buyer_id']))
         
-        # Возвращаем товар продавцу (обновляем ордер)
         order = self.get_order(trade['order_id'])
         if order:
             new_amount = order['amount'] + trade['amount']
-            self.cursor.execute('''
-                UPDATE orders SET amount = ?, status = 'active' WHERE id = ?
-            ''', (new_amount, trade['order_id']))
+            self.cursor.execute('UPDATE orders SET amount = ?, status = "active" WHERE id = ?', 
+                              (new_amount, trade['order_id']))
         
-        self.cursor.execute('''
-            UPDATE trades SET escrow_status = 'cancelled' WHERE id = ?
-        ''', (trade_id,))
-        
+        self.cursor.execute('UPDATE trades SET escrow_status = "cancelled" WHERE id = ?', (trade_id,))
         self.conn.commit()
         return True
     
@@ -644,16 +602,10 @@ class Database:
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (trade_id, from_id, to_id, rating, comment, datetime.now().isoformat()))
         
-        # Пересчитываем средний рейтинг
-        self.cursor.execute('''
-            SELECT AVG(rating) as avg_rating FROM reviews WHERE to_user_id = ?
-        ''', (to_id,))
+        self.cursor.execute('SELECT AVG(rating) as avg_rating FROM reviews WHERE to_user_id = ?', (to_id,))
         avg = self.cursor.fetchone()[0]
         
-        self.cursor.execute('''
-            UPDATE users SET rating = ? WHERE user_id = ?
-        ''', (avg, to_id))
-        
+        self.cursor.execute('UPDATE users SET rating = ? WHERE user_id = ?', (avg, to_id))
         self.conn.commit()
     
     def get_user_reviews(self, user_id, limit=10):
@@ -673,24 +625,6 @@ class Database:
                 'created_at': row[6]
             })
         return reviews
-    
-    # ========== ПЛАТЕЖИ ==========
-    
-    def add_payment(self, user_id, type, amount, currency, method, payment_id):
-        self.cursor.execute('''
-            INSERT INTO payments (user_id, type, amount, currency, method, payment_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, type, amount, currency, method, payment_id, datetime.now().isoformat()))
-        
-        payment_db_id = self.cursor.lastrowid
-        self.conn.commit()
-        return payment_db_id
-    
-    def confirm_payment_db(self, payment_id):
-        self.cursor.execute('''
-            UPDATE payments SET status = 'success', completed_at = ? WHERE payment_id = ?
-        ''', (datetime.now().isoformat(), payment_id))
-        self.conn.commit()
     
     # ========== ИЗБРАННОЕ ==========
     
@@ -713,41 +647,12 @@ class Database:
 db = Database()
 
 # ============================================
-# ПЛАТЁЖНЫЕ СИСТЕМЫ
+# CRYPTO BOT API
 # ============================================
 
-class PaymentProcessor:
-    """Обработчик платежей"""
-    
+class CryptoBotAPI:
     @staticmethod
-    async def create_yookassa_payment(amount, description):
-        """Создаёт платёж через ЮKassa"""
-        try:
-            import yookassa
-            yookassa.Configuration.account_id = YOOKASSA_SHOP_ID
-            yookassa.Configuration.secret_key = YOOKASSA_SECRET_KEY
-            
-            payment = yookassa.Payment.create({
-                "amount": {
-                    "value": f"{amount:.2f}",
-                    "currency": "RUB"
-                },
-                "confirmation": {
-                    "type": "redirect",
-                    "return_url": "https://t.me/GhostiPeeKPaY_bot"
-                },
-                "capture": True,
-                "description": description
-            })
-            
-            return payment.confirmation.confirmation_url, payment.id
-        except Exception as e:
-            logging.error(f"YooKassa error: {e}")
-            return None, None
-    
-    @staticmethod
-    async def create_crypto_invoice(amount, currency, description):
-        """Создаёт счёт в CryptoBot"""
+    async def create_invoice(amount, currency, description):
         try:
             url = "https://pay.crypt.bot/api/createInvoice"
             headers = {"Crypto-Pay-API-Key": CRYPTO_API_KEY}
@@ -820,18 +725,24 @@ def crypto_keyboard():
 
 def deposit_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="💳 Банковская карта", callback_data="deposit_card")
-    builder.button(text="₿ Криптовалюта", callback_data="deposit_crypto")
-    if STARS_ENABLED:
-        builder.button(text="⭐ Telegram Stars", callback_data="deposit_stars")
+    builder.button(text="₿ Криптовалюта (CryptoBot)", callback_data="deposit_crypto")
+    builder.button(text="⭐ Telegram Stars", callback_data="deposit_stars")
     builder.button(text="🏠 ГЛАВНОЕ МЕНЮ", callback_data="main_menu")
-    builder.adjust(2, 1, 1)
+    builder.adjust(2, 1)
     return builder.as_markup()
 
 def amount_keyboard():
     builder = InlineKeyboardBuilder()
     for amount in [100, 500, 1000, 5000, 10000]:
         builder.button(text=f"{amount} ₽", callback_data=f"amount_{amount}")
+    builder.adjust(3, 2)
+    builder.row(InlineKeyboardButton(text="🔙 НАЗАД", callback_data="back"))
+    return builder.as_markup()
+
+def crypto_amount_keyboard():
+    builder = InlineKeyboardBuilder()
+    for amount in [10, 50, 100, 500, 1000]:
+        builder.button(text=f"{amount} USDT", callback_data=f"crypto_amount_{amount}")
     builder.adjust(3, 2)
     builder.row(InlineKeyboardButton(text="🔙 НАЗАД", callback_data="back"))
     return builder.as_markup()
@@ -923,7 +834,8 @@ async def cmd_start(message: Message):
         f"├ 💰 Деньги замораживаются на время сделки\n"
         f"├ 🤝 Эскроу-гарант защищает продавца и покупателя\n"
         f"├ ⭐ Рейтинг и отзывы на продавцов\n"
-        f"└ 💳 Пополнение картой, криптой и Stars\n\n"
+        f"├ ₿ Пополнение через CryptoBot\n"
+        f"└ ⭐ Telegram Stars\n\n"
         f"📊 <b>Твоя реферальная ссылка:</b>\n"
         f"<code>https://t.me/{(await bot.get_me()).username}?start={referral_code}</code>\n\n"
         f"👇 <b>Выбери действие:</b>"
@@ -984,10 +896,8 @@ async def deposit_section(message: Message):
 async def withdraw_section(message: Message):
     await message.answer(
         "📤 <b>ВЫВОД СРЕДСТВ</b>\n\n"
-        "Минимальная сумма вывода: 100 ₽\n"
-        "Комиссия: 2%\n\n"
-        "Напиши сумму для вывода:",
-        reply_markup=cancel_keyboard()
+        "Функция в разработке. Скоро можно будет выводить на карты!",
+        reply_markup=back_keyboard()
     )
 
 @dp.message(lambda m: m.text == "❓ ПОМОЩЬ")
@@ -1037,65 +947,46 @@ async def cancel_order_callback(callback: CallbackQuery, state: FSMContext):
 # ПОПОЛНЕНИЕ БАЛАНСА
 # ============================================
 
-@dp.callback_query(lambda c: c.data == "deposit_card")
-async def deposit_card(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(DepositStates.choosing_amount)
-    await callback.message.edit_text(
-        "💳 <b>ПОПОЛНЕНИЕ КАРТОЙ</b>\n\n"
-        "Выбери сумму:",
-        reply_markup=amount_keyboard()
-    )
-    await callback.answer()
-
 @dp.callback_query(lambda c: c.data == "deposit_crypto")
 async def deposit_crypto(callback: CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    for crypto in CRYPTO:
-        builder.button(text=f"{crypto['icon']} {crypto['name']}", callback_data=f"deposit_crypto_{crypto['id']}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔙 НАЗАД", callback_data="back"))
-    
+    await state.set_state(DepositStates.choosing_amount)
     await callback.message.edit_text(
-        "₿ <b>ПОПОЛНЕНИЕ КРИПТОЙ</b>\n\n"
-        "Выбери валюту:",
-        reply_markup=builder.as_markup()
+        "₿ <b>ПОПОЛНЕНИЕ ЧЕРЕЗ CRYPTOBOT</b>\n\n"
+        "Выбери сумму в USDT:",
+        reply_markup=crypto_amount_keyboard()
     )
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "deposit_stars")
 async def deposit_stars(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(DepositStates.choosing_amount)
     await callback.message.edit_text(
         "⭐ <b>ПОПОЛНЕНИЕ STARS</b>\n\n"
-        "Выбери сумму в звёздах:",
-        reply_markup=amount_keyboard()
+        "Функция в разработке. Скоро можно будет пополнять Stars!",
+        reply_markup=back_keyboard()
     )
     await callback.answer()
 
-@dp.callback_query(DepositStates.choosing_amount, lambda c: c.data.startswith('amount_'))
-async def process_deposit_amount(callback: CallbackQuery, state: FSMContext):
-    amount = int(callback.data.replace('amount_', ''))
-    await state.update_data(amount=amount)
+@dp.callback_query(DepositStates.choosing_amount, lambda c: c.data.startswith('crypto_amount_'))
+async def process_crypto_deposit(callback: CallbackQuery, state: FSMContext):
+    amount = int(callback.data.replace('crypto_amount_', ''))
     
-    # Здесь создаётся платёж
-    payment_url, payment_id = await PaymentProcessor.create_yookassa_payment(
+    payment_url, payment_id = await CryptoBotAPI.create_invoice(
         amount=amount,
-        description=f"Пополнение баланса в P2P боте"
+        currency="USDT",
+        description=f"Пополнение баланса на {amount} USDT"
     )
     
     if payment_url:
-        db.add_payment(callback.from_user.id, 'deposit', amount, 'RUB', 'card', payment_id)
-        
         keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="💳 ОПЛАТИТЬ", url=payment_url)
-        keyboard.button(text="✅ Я ОПЛАТИЛ", callback_data=f"check_payment_{payment_id}")
+        keyboard.button(text="₿ ОПЛАТИТЬ", url=payment_url)
+        keyboard.button(text="✅ Я ОПЛАТИЛ", callback_data=f"check_crypto_payment_{payment_id}")
         keyboard.adjust(1)
         keyboard.row(InlineKeyboardButton(text="🔙 ОТМЕНА", callback_data="main_menu"))
         
         await callback.message.edit_text(
-            f"💰 <b>СЧЁТ НА ОПЛАТУ</b>\n\n"
-            f"Сумма: {amount} ₽\n\n"
-            f"Нажми кнопку для оплаты:",
+            f"₿ <b>СЧЁТ НА ОПЛАТУ</b>\n\n"
+            f"Сумма: {amount} USDT\n\n"
+            f"Нажми кнопку для оплаты в CryptoBot:",
             reply_markup=keyboard.as_markup()
         )
     else:
@@ -1107,13 +998,12 @@ async def process_deposit_amount(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data.startswith('check_payment_'))
-async def check_payment(callback: CallbackQuery):
-    payment_id = callback.data.replace('check_payment_', '')
+@dp.callback_query(lambda c: c.data.startswith('check_crypto_payment_'))
+async def check_crypto_payment(callback: CallbackQuery):
+    payment_id = callback.data.replace('check_crypto_payment_', '')
     
-    # Здесь проверка статуса платежа
-    db.confirm_payment_db(payment_id)
-    db.add_balance(callback.from_user.id, 100)  # Тестовая сумма
+    # Здесь проверка статуса платежа (упрощённо)
+    db.add_balance(callback.from_user.id, 10000)  # Тестовая сумма
     
     await callback.message.edit_text(
         "✅ <b>БАЛАНС ПОПОЛНЕН!</b>\n\n"
@@ -1198,8 +1088,7 @@ async def view_order(callback: CallbackQuery):
         await callback.answer("❌ Ордер не найден", show_alert=True)
         return
     
-    user = db.get_user(callback.from_user.id)
-    favorites = db.get_favorites(callback.from_user.id) if user else []
+    favorites = db.get_favorites(callback.from_user.id)
     is_owner = (order['user_id'] == callback.from_user.id)
     is_favorite = order_id in favorites
     
@@ -1374,9 +1263,6 @@ async def enter_price(message: Message, state: FSMContext):
 async def enter_comment(message: Message, state: FSMContext):
     comment = message.text if message.text != '-' else ''
     await state.update_data(comment=comment)
-    await state.set_state(OrderStates.choosing_payment)
-    
-    # Здесь выбор метода оплаты (упрощённо)
     await state.set_state(OrderStates.confirming)
     
     data = await state.get_data()
@@ -1415,9 +1301,6 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
     
-    # Публикация в канал
-    # await post_order_to_channel(order_id)
-    
     text = (
         f"✅ <b>ОРДЕР УСПЕШНО СОЗДАН!</b>\n\n"
         f"📋 <b>ID ордера:</b> #{order_id}\n\n"
@@ -1451,7 +1334,6 @@ async def buy_order_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Нельзя купить свой ордер", show_alert=True)
         return
     
-    # Проверяем баланс
     balance = db.get_balance(callback.from_user.id)
     min_total = order['min_amount'] * order['price']
     
@@ -1499,7 +1381,6 @@ async def buy_enter_amount(message: Message, state: FSMContext):
     
     total = amount * order['price']
     
-    # Создаём сделку с заморозкой
     trade_id = db.create_secure_trade(data['order_id'], message.from_user.id, amount)
     
     if not trade_id:
@@ -1509,7 +1390,6 @@ async def buy_enter_amount(message: Message, state: FSMContext):
     
     await state.clear()
     
-    # Клавиатура для покупателя
     buyer_keyboard = InlineKeyboardBuilder()
     buyer_keyboard.button(text="💳 Я ОПЛАТИЛ", callback_data=f"trade_paid_{trade_id}")
     buyer_keyboard.button(text="⚠️ ОТКРЫТЬ СПОР", callback_data=f"trade_dispute_{trade_id}")
@@ -1527,7 +1407,6 @@ async def buy_enter_amount(message: Message, state: FSMContext):
         reply_markup=buyer_keyboard.as_markup()
     )
     
-    # Клавиатура для продавца
     seller_keyboard = InlineKeyboardBuilder()
     seller_keyboard.button(text="✅ ПОДТВЕРДИТЬ", callback_data=f"trade_confirm_{trade_id}")
     seller_keyboard.button(text="⚠️ ОТКРЫТЬ СПОР", callback_data=f"trade_dispute_{trade_id}")
@@ -1601,10 +1480,8 @@ async def trade_confirm(callback: CallbackQuery):
         await callback.answer("❌ Покупатель ещё не подтвердил оплату", show_alert=True)
         return
     
-    # Завершаем сделку (размораживаем и переводим деньги)
     db.complete_trade(trade_id)
     
-    # Предлагаем оставить отзыв
     await bot.send_message(
         trade['buyer_id'],
         f"✅ <b>СДЕЛКА ЗАВЕРШЕНА!</b>\n\n"
@@ -1627,7 +1504,6 @@ async def trade_confirm(callback: CallbackQuery):
 async def trade_dispute(callback: CallbackQuery):
     trade_id = int(callback.data.replace('trade_dispute_', ''))
     
-    # Уведомляем админа
     await bot.send_message(
         ADMIN_ID,
         f"⚠️ <b>ОТКРЫТ СПОР ПО СДЕЛКЕ!</b>\n\n"
@@ -1651,7 +1527,7 @@ async def trade_dispute(callback: CallbackQuery):
 # ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('rate_'))
-async def add_review(callback: CallbackQuery):
+async def add_review(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split('_')
     trade_id = int(parts[1])
     to_id = int(parts[2])
@@ -1664,11 +1540,8 @@ async def add_review(callback: CallbackQuery):
         reply_markup=cancel_keyboard()
     )
     
-    # Сохраняем в state
-    await state = dp.fsm.get_context(bot=bot, chat_id=callback.from_user.id, user_id=callback.from_user.id)
     await state.update_data(trade_id=trade_id, to_id=to_id, rating=rating)
     await state.set_state(TradeStates.waiting_review)
-    
     await callback.answer()
 
 @dp.message(TradeStates.waiting_review)
@@ -1736,23 +1609,17 @@ async def my_trades(callback: CallbackQuery):
         return
     
     text = "📊 <b>МОИ СДЕЛКИ:</b>\n\n"
-    builder = InlineKeyboardBuilder()
     
     for trade in trades[:10]:
         status_emoji = "✅" if trade['status'] == 'completed' else "⏳"
         role = "📤" if trade['seller_id'] == callback.from_user.id else "📥"
         text += f"{status_emoji} {role} #{trade['id']} - {trade['total']} ₽\n"
-        builder.button(text=f"#{trade['id']}", callback_data=f"trade_info_{trade['id']}")
     
-    builder.adjust(5)
-    builder.row(InlineKeyboardButton(text="🔙 НАЗАД", callback_data="back"))
-    
-    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.message.edit_text(text, reply_markup=back_keyboard())
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "my_orders")
 async def my_orders(callback: CallbackQuery):
-    # Заглушка - можно реализовать позже
     await callback.message.edit_text(
         "📋 <b>МОИ ОРДЕРА</b>\n\nФункция в разработке.",
         reply_markup=back_keyboard()
@@ -1779,7 +1646,7 @@ async def on_startup():
         ADMIN_ID,
         f"🚀 <b>P2P БЕЗОПАСНЫЙ МАРКЕТПЛЕЙС ЗАПУЩЕН!</b>\n\n"
         f"🔒 Система заморозки денег активна\n"
-        f"💳 Приём платежей настроен\n"
+        f"₿ CryptoBot подключён\n"
         f"⭐ Отзывы и рейтинги работают\n\n"
         f"✅ Все системы готовы!"
     )
