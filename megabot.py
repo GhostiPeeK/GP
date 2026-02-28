@@ -58,9 +58,8 @@ CHANNEL_ID = 1003664296821  # ID твоего канала для ордеров
 # ============================================
 
 # ЮKassa (для карт)
-YOOKASSA_SHOP_ID = "ТВОЙ_SHOP_ID"  # Получи на yookassa.ru
-YOOKASSA_SECRET_KEY = "ТВОЙ_SECRET_KEY"
-
+YOOKASSA_SHOP_ID = "000000"
+YOOKASSA_SECRET_KEY = "test_00000000000000000000000000000000"
 # CryptoBot (для крипты)
 CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"  # Получи в @CryptoBot
 
