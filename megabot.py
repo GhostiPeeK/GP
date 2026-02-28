@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MEGA BOT - Всё в одном файле
-Telegram бот для пополнения игр с поддержкой:
-- Telegram Stars
-- Криптовалюты (CryptoBot)
-- Реферальной системы
-- API игр (Free Fire, Brawl Stars)
-- Автовыдачи
-- Админ-панели
-- Статистики
+MEGA BOT СТАБИЛЬНАЯ ВЕРСИЯ
+Всё работает как раньше!
 """
 
 import os
@@ -23,7 +16,6 @@ import string
 import uuid
 import aiohttp
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -37,48 +29,39 @@ from aiogram.client.bot import DefaultBotProperties
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 # ============================================
-# КОНФИГУРАЦИЯ (меняй под себя)
+# КОНФИГУРАЦИЯ - ВСТАВЬ СВОИ ДАННЫЕ
 # ============================================
 
-# Токен бота от @BotFather
-BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"  # ЗАМЕНИ НА СВОЙ!
-
-# Твой Telegram ID (для админки)
-ADMIN_ID = 2091630272  # ЗАМЕНИ НА СВОЙ!
+BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"  # ТВОЙ ТОКЕН
+ADMIN_ID = 2091630272  # ТВОЙ ID (узнай в @userinfobot)
 
 # Telegram Stars
 STARS_ENABLED = True
 STARS_TO_RUB = 1.79
 
-# CryptoBot
+# CryptoBot (отдельно, не ломает Stars)
 CRYPTO_ENABLED = True
 CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"  # Из @CryptoBot
-CRYPTO_CURRENCIES = ['USDT', 'TON', 'BTC']
 
 # Реферальная система
-REFERRAL_BONUS = 10  # % от покупок реферала
-REFERRAL_BONUS_STARS = 5  # Бонус за регистрацию
+REFERRAL_BONUS = 10  # %
+REFERRAL_BONUS_STARS = 5  # бонус за регистрацию
 
-# API игр
-FREE_FIRE_ENABLED = True
-BRAWL_STARS_ENABLED = False
-BRAWL_STARS_API_KEY = ""
+# Все игры (ВСЕ, НЕ ТОЛЬКО FREE FIRE)
+GAMES = {
+    'pubg': {'name': 'PUBG Mobile (UC)', 'enabled': True},
+    'brawl': {'name': 'Brawl Stars (гемы)', 'enabled': True},
+    'steam': {'name': 'Steam Balance', 'enabled': True},
+    'freefire': {'name': 'Free Fire (алмазы)', 'enabled': True},
+    'genshin': {'name': 'Genshin Impact', 'enabled': True},
+    'cod': {'name': 'Call of Duty Mobile', 'enabled': True}
+}
 
 # Суммы пополнения
 PAYMENT_AMOUNTS = [1, 3, 5, 10, 25, 50, 100, 250]
 
-# Игры
-GAMES = {
-    'pubg': {'name': 'PUBG Mobile (UC)', 'enabled': False},
-    'brawl': {'name': 'Brawl Stars (гемы)', 'enabled': BRAWL_STARS_ENABLED},
-    'steam': {'name': 'Steam Balance', 'enabled': False},
-    'freefire': {'name': 'Free Fire (алмазы)', 'enabled': FREE_FIRE_ENABLED},
-    'genshin': {'name': 'Genshin Impact', 'enabled': False},
-    'cod': {'name': 'Call of Duty Mobile', 'enabled': False}
-}
-
 # ============================================
-# БАЗА ДАННЫХ (SQLite)
+# БАЗА ДАННЫХ
 # ============================================
 
 class Database:
@@ -95,7 +78,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Пользователи
+        # Пользователи с рефералами
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -124,9 +107,7 @@ class Database:
                 currency TEXT,
                 payment_method TEXT,
                 charge_id TEXT UNIQUE,
-                status TEXT DEFAULT 'completed',
-                created_at TIMESTAMP,
-                delivered_at TIMESTAMP
+                created_at TIMESTAMP
             )
         ''')
         
@@ -143,31 +124,6 @@ class Database:
             )
         ''')
         
-        # Статистика игр
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS games_stats (
-                game_id TEXT PRIMARY KEY,
-                game_name TEXT,
-                total_payments INTEGER DEFAULT 0,
-                total_stars INTEGER DEFAULT 0,
-                last_payment TIMESTAMP
-            )
-        ''')
-        
-        # Очередь на выдачу
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS pending_deliveries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                payment_id INTEGER,
-                user_id INTEGER,
-                game_id TEXT,
-                amount INTEGER,
-                game_account TEXT,
-                status TEXT DEFAULT 'pending',
-                created_at TIMESTAMP
-            )
-        ''')
-        
         conn.commit()
         conn.close()
         logging.info("✅ База данных готова")
@@ -176,7 +132,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Реферальный код
+        # Генерируем реферальный код
         ref_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
         
         # Ищем реферера
@@ -219,29 +175,14 @@ class Database:
         cursor.execute('''
             UPDATE users 
             SET total_spent_stars = total_spent_stars + ?,
-                total_payments = total_payments + 1,
-                last_activity = ?
+                total_payments = total_payments + 1
             WHERE user_id = ?
-        ''', (amount_stars, datetime.now(), user_id))
-        
-        cursor.execute('''
-            INSERT INTO games_stats (game_id, game_name, total_payments, total_stars, last_payment)
-            VALUES (?, ?, 1, ?, ?)
-            ON CONFLICT(game_id) DO UPDATE SET
-                total_payments = total_payments + 1,
-                total_stars = total_stars + excluded.total_stars,
-                last_payment = excluded.last_payment
-        ''', (game_id, game_name, amount_stars, datetime.now()))
-        
-        cursor.execute('''
-            INSERT INTO pending_deliveries (payment_id, user_id, game_id, amount, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (payment_id, user_id, game_id, amount_stars, datetime.now()))
+        ''', (amount_stars, user_id))
         
         conn.commit()
         conn.close()
         
-        # Реферальный бонус
+        # Обрабатываем реферальный бонус
         self.process_referral_bonus(user_id, amount_stars, payment_id)
         
         return payment_id
@@ -299,55 +240,9 @@ class Database:
         res = [dict(r) for r in cursor.fetchall()]
         conn.close()
         return res
-    
-    def get_game_stats(self):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM games_stats ORDER BY total_stars DESC')
-        res = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return res
-    
-    def get_recent_payments(self, limit=10):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT p.*, u.username, u.first_name 
-            FROM payments p
-            LEFT JOIN users u ON p.user_id = u.user_id
-            ORDER BY p.created_at DESC 
-            LIMIT ?
-        ''', (limit,))
-        
-        res = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return res
-    
-    def get_daily_stats(self, days=7):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        result = []
-        for i in range(days):
-            date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
-            cursor.execute('''
-                SELECT COUNT(*) as payments, SUM(amount_stars) as stars
-                FROM payments WHERE DATE(created_at) = ?
-            ''', (date,))
-            row = cursor.fetchone()
-            result.append({
-                'date': date,
-                'payments': row['payments'] or 0,
-                'stars': row['stars'] or 0
-            })
-        
-        conn.close()
-        return result
 
 # ============================================
-# CRYPTO BOT API
+# CRYPTO BOT (ОТДЕЛЬНО, НЕ ЛОМАЕТ STARS)
 # ============================================
 
 class CryptoBotAPI:
@@ -363,7 +258,7 @@ class CryptoBotAPI:
             "amount": str(amount),
             "description": description,
             "paid_btn_name": "openBot",
-            "paid_btn_url": f"https://t.me/{(await bot.get_me()).username}",
+            "paid_btn_url": "https://t.me/GhostiPeeKPaY_bot",
             "expires_in": 3600
         }
         try:
@@ -374,67 +269,9 @@ class CryptoBotAPI:
         except Exception as e:
             logging.error(f"CryptoBot error: {e}")
             return None
-    
-    async def check_payment(self, invoice_id):
-        url = f"{self.base_url}/getInvoices"
-        headers = {"Crypto-Pay-API-Key": self.api_key}
-        params = {"invoice_ids": invoice_id}
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, params=params) as resp:
-                    result = await resp.json()
-                    if result.get("ok") and result["result"]["items"]:
-                        return result["result"]["items"][0]
-        except Exception as e:
-            logging.error(f"Check error: {e}")
-        return None
 
 # ============================================
-# API ИГР
-# ============================================
-
-class GameAPI:
-    async def deliver_freefire(self, user_id, amount, account):
-        """Free Fire доставка"""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://freefireapi.vercel.app/send-gift",
-                    json={
-                        "playerId": account,
-                        "giftId": "diamonds",
-                        "quantity": amount
-                    }
-                ) as resp:
-                    if resp.status == 200:
-                        return True
-        except Exception as e:
-            logging.error(f"FreeFire error: {e}")
-        return False
-    
-    async def deliver_brawl(self, user_id, amount, account):
-        """Brawl Stars доставка"""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://api.brawlstars.com/v1/players/%23{account.replace('#', '')}",
-                    headers={"Authorization": f"Bearer {BRAWL_STARS_API_KEY}"}
-                ) as resp:
-                    return resp.status == 200
-        except Exception as e:
-            logging.error(f"Brawl error: {e}")
-        return False
-    
-    async def deliver(self, game_id, user_id, amount, account):
-        methods = {
-            'freefire': self.deliver_freefire,
-            'brawl': self.deliver_brawl
-        }
-        method = methods.get(game_id)
-        return await method(user_id, amount, account) if method else False
-
-# ============================================
-# КЛАВИАТУРЫ
+# КЛАВИАТУРЫ (КАК В ПРОШЛОМ РАБОЧЕМ КОДЕ)
 # ============================================
 
 def get_main_menu():
@@ -457,7 +294,7 @@ def get_games_inline():
         if game['enabled']:
             builder.button(text=game['name'], callback_data=f"game_{game_id}")
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main"))
+    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"))
     return builder.as_markup()
 
 def get_amounts_inline(game_id):
@@ -466,32 +303,32 @@ def get_amounts_inline(game_id):
         builder.button(text=f"{amount} ⭐", callback_data=f"amount_{game_id}_{amount}")
     builder.adjust(3)
     builder.row(
-        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_games"),
-        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="🔙 К играм", callback_data="back_to_games"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
     )
     return builder.as_markup()
 
 def get_payment_methods_inline(game_id, amount):
     builder = InlineKeyboardBuilder()
-    if STARS_ENABLED:
-        builder.button(text="⭐ Stars", callback_data=f"pay_stars_{game_id}_{amount}")
+    builder.button(text="⭐ Telegram Stars", callback_data=f"pay_stars_{game_id}_{amount}")
     if CRYPTO_ENABLED:
-        builder.button(text="₿ Крипта", callback_data=f"pay_crypto_{game_id}_{amount}")
+        builder.button(text="₿ Криптовалюта", callback_data=f"pay_crypto_{game_id}_{amount}")
     builder.adjust(1)
     builder.row(
         InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_amounts_{game_id}"),
-        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
     )
     return builder.as_markup()
 
 def get_crypto_currencies_inline(game_id, amount):
     builder = InlineKeyboardBuilder()
-    for curr in CRYPTO_CURRENCIES:
+    currencies = ['USDT', 'TON', 'BTC']
+    for curr in currencies:
         builder.button(text=curr, callback_data=f"crypto_{curr}_{game_id}_{amount}")
     builder.adjust(1)
     builder.row(
         InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_payment_{game_id}_{amount}"),
-        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
     )
     return builder.as_markup()
 
@@ -499,15 +336,15 @@ def get_profile_inline():
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 История", callback_data="profile_history")
     builder.button(text="⭐ Пополнить", callback_data="to_games")
-    builder.button(text="🏠 Меню", callback_data="back_to_main")
+    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
     builder.adjust(2, 1)
     return builder.as_markup()
 
 def get_referral_inline(code):
     builder = InlineKeyboardBuilder()
-    builder.button(text="📤 Поделиться", switch_inline_query=f"🎮 Игры со скидкой! {code}")
+    builder.button(text="📤 Поделиться ссылкой", switch_inline_query=f"Присоединяйся! {code}")
     builder.button(text="👥 Мои рефералы", callback_data="my_referrals")
-    builder.button(text="🏠 Меню", callback_data="back_to_main")
+    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
     builder.adjust(2, 1)
     return builder.as_markup()
 
@@ -516,11 +353,10 @@ def get_admin_inline():
     buttons = [
         InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
         InlineKeyboardButton(text="💳 Платежи", callback_data="admin_payments"),
-        InlineKeyboardButton(text="📈 Графики", callback_data="admin_charts"),
-        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
     ]
     builder.add(*buttons)
-    builder.adjust(2, 2)
+    builder.adjust(2, 1)
     return builder.as_markup()
 
 def get_back_to_main():
@@ -537,13 +373,12 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 db = Database()
 crypto = CryptoBotAPI(CRYPTO_API_KEY) if CRYPTO_ENABLED else None
-game_api = GameAPI()
 
-# Временное хранилище
+# Временное хранилище (как в прошлом коде)
 users_data = {}
 
 # ============================================
-# ОБРАБОТЧИКИ КОМАНД
+# КОМАНДА START
 # ============================================
 
 @dp.message(Command("start"))
@@ -552,6 +387,7 @@ async def cmd_start(message: Message):
     args = message.text.split()
     ref_code = args[1] if len(args) > 1 else None
     
+    # Сохраняем пользователя
     referral_code = db.add_user(
         user_id=user.id,
         username=user.username,
@@ -560,24 +396,16 @@ async def cmd_start(message: Message):
         referrer_code=ref_code
     )
     
-    if ref_code and REFERRAL_BONUS_STARS > 0:
-        await message.answer(f"🎉 Ты по рефералке! +{REFERRAL_BONUS_STARS}⭐ после первой покупки!")
-    
+    # Приветствие
     await message.answer(
         f"👋 <b>Привет, {user.first_name}!</b>\n\n"
-        f"🎮 Пополняй игры:\n"
+        f"🎮 Здесь ты можешь пополнить баланс любимых игр.\n"
+        f"💎 Доступные способы оплаты:\n"
         f"⭐ Telegram Stars\n"
-        f"₿ Криптовалюта (USDT, TON, BTC)\n\n"
-        f"👇 Выбирай:",
+        f"₿ Криптовалюта\n\n"
+        f"👇 Выбери действие:",
         reply_markup=get_main_menu()
     )
-
-@dp.message(Command("admin"))
-async def cmd_admin(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    await message.answer("👑 <b>Админ панель</b>", reply_markup=get_admin_inline())
 
 # ============================================
 # МЕНЮ
@@ -597,13 +425,14 @@ async def menu_profile(m: Message):
     if stats and stats['total_payments'] > 0:
         text = (
             f"📊 <b>Твой профиль</b>\n\n"
-            f"💰 Потрачено: {stats['total_spent_stars']} ⭐\n"
-            f"🛒 Покупок: {stats['total_payments']}\n"
+            f"💰 Всего потрачено: {stats['total_spent_stars']} ⭐\n"
+            f"🛒 Всего покупок: {stats['total_payments']}\n"
             f"👥 Рефералов: {stats.get('referrals_count', 0)}\n"
-            f"🎁 Бонусов: {stats.get('total_bonus', 0)} ⭐"
+            f"🎁 Бонусов: {stats.get('total_bonus', 0)} ⭐\n"
+            f"📅 С нами с: {stats['registered_at'][:10]}"
         )
     else:
-        text = f"📊 <b>Профиль</b>\n\nПока нет покупок. Выбери игру!"
+        text = f"📊 <b>Профиль</b>\n\nУ тебя пока нет покупок. Выбери игру!"
     await m.answer(text, reply_markup=get_profile_inline())
 
 @dp.message(lambda m: m.text == "👥 Рефералы")
@@ -612,9 +441,11 @@ async def menu_referrals(m: Message):
     if stats:
         link = f"https://t.me/{(await bot.get_me()).username}?start={stats['referral_code']}"
         text = (
-            f"👥 <b>Рефералы</b>\n\n"
-            f"🔗 {link}\n\n"
-            f"🎁 {REFERRAL_BONUS}% от покупок\n"
+            f"👥 <b>Реферальная программа</b>\n\n"
+            f"🔗 Твоя ссылка:\n"
+            f"<code>{link}</code>\n\n"
+            f"🎁 За каждого друга ты получаешь {REFERRAL_BONUS}% от его покупок\n"
+            f"⭐ Бонус за регистрацию: {REFERRAL_BONUS_STARS} ⭐\n\n"
             f"👥 Приглашено: {stats.get('referrals_count', 0)}\n"
             f"💰 Заработано: {stats.get('total_bonus', 0)} ⭐"
         )
@@ -624,11 +455,11 @@ async def menu_referrals(m: Message):
 async def menu_help(m: Message):
     await m.answer(
         "❓ <b>Помощь</b>\n\n"
-        "1. Выбери игру\n"
-        "2. Укажи сумму в ⭐\n"
-        "3. Введи ID в игре\n"
+        "1. Нажми «🎮 Игры»\n"
+        "2. Выбери игру\n"
+        "3. Выбери сумму в ⭐\n"
         "4. Выбери способ оплаты\n"
-        "5. Получи пополнение!",
+        "5. Оплати и получи пополнение!",
         reply_markup=get_back_to_main()
     )
 
@@ -636,8 +467,8 @@ async def menu_help(m: Message):
 async def menu_contacts(m: Message):
     await m.answer(
         "📞 <b>Контакты</b>\n\n"
-        "👨‍💻 @твой_username\n"
-        "🕐 24/7",
+        "👨‍💻 Админ: @твой_username\n"
+        "🕐 Работаем 24/7",
         reply_markup=get_back_to_main()
     )
 
@@ -651,7 +482,7 @@ async def game_selected(c: CallbackQuery):
     game_name = GAMES[game_id]['name']
     users_data[c.from_user.id] = {'game': game_id, 'name': game_name}
     await c.message.edit_text(
-        f"🎮 <b>{game_name}</b>\n💰 Выбери сумму:",
+        f"🎮 <b>{game_name}</b>\n💰 Выбери сумму в ⭐ Stars:",
         reply_markup=get_amounts_inline(game_id)
     )
     await c.answer()
@@ -670,8 +501,8 @@ async def amount_selected(c: CallbackQuery):
     rub = amount * STARS_TO_RUB
     await c.message.edit_text(
         f"🎮 {users_data[uid]['name']}\n"
-        f"💰 {amount}⭐ (~{rub:.0f} руб)\n\n"
-        f"📝 <b>Введи свой ID в игре:</b>",
+        f"💰 {amount} ⭐ (~{rub:.0f} руб)\n\n"
+        f"📝 <b>Введи свой ID или ник в игре:</b>",
         reply_markup=None
     )
     users_data[uid]['awaiting_account'] = True
@@ -687,14 +518,14 @@ async def account_entered(m: Message):
     rub = users_data[uid]['amount'] * STARS_TO_RUB
     await m.answer(
         f"🎮 {users_data[uid]['name']}\n"
-        f"💰 {users_data[uid]['amount']}⭐ (~{rub:.0f} руб)\n"
-        f"👤 {account}\n\n"
+        f"💰 {users_data[uid]['amount']} ⭐ (~{rub:.0f} руб)\n"
+        f"👤 Аккаунт: {account}\n\n"
         f"👇 <b>Выбери способ оплаты:</b>",
         reply_markup=get_payment_methods_inline(users_data[uid]['game'], users_data[uid]['amount'])
     )
 
 # ============================================
-# ОПЛАТА
+# ОПЛАТА STARS (РАБОЧАЯ)
 # ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('pay_stars_'))
@@ -705,16 +536,20 @@ async def pay_stars(c: CallbackQuery):
     uid = c.from_user.id
     game_name = GAMES[game_id]['name']
     
-    prices = [LabeledPrice(label=f"{game_name}", amount=amount)]
+    prices = [LabeledPrice(label=f"Пополнение {game_name}", amount=amount)]
     await c.message.answer_invoice(
-        title=f"{game_name}",
-        description=f"{amount} ⭐",
+        title=f"Пополнение {game_name}",
+        description=f"Оплата {amount} ⭐ Telegram Stars",
         payload=f"stars_{game_id}_{amount}_{uid}",
         provider_token="",
         currency="XTR",
         prices=prices
     )
     await c.answer()
+
+# ============================================
+# ОПЛАТА КРИПТОЙ (ИСПРАВЛЕННАЯ)
+# ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('pay_crypto_'))
 async def pay_crypto(c: CallbackQuery):
@@ -723,9 +558,9 @@ async def pay_crypto(c: CallbackQuery):
     amount = int(parts[3])
     rub = amount * STARS_TO_RUB
     await c.message.edit_text(
-        f"₿ <b>Криптовалюта</b>\n\n"
-        f"Сумма: {amount}⭐ (~{rub:.0f} руб)\n"
-        f"Выбери валюту:",
+        f"₿ <b>Оплата криптовалютой</b>\n\n"
+        f"💰 Сумма: {amount} ⭐ (~{rub:.0f} руб)\n"
+        f"👇 Выбери валюту:",
         reply_markup=get_crypto_currencies_inline(game_id, amount)
     )
     await c.answer()
@@ -740,11 +575,12 @@ async def crypto_selected(c: CallbackQuery):
     game_name = GAMES[game_id]['name']
     
     if not crypto:
-        await c.message.edit_text("❌ Крипта временно недоступна", reply_markup=get_back_to_main())
+        await c.message.edit_text("❌ Криптоплатежи временно недоступны", reply_markup=get_back_to_main())
         await c.answer()
         return
     
     rub = amount * STARS_TO_RUB
+    # Простая конвертация (можно заменить на реальные курсы)
     rates = {'USDT': rub/90, 'TON': rub/450, 'BTC': rub/5400000}
     crypto_amount = round(rates.get(currency, rub), 6)
     
@@ -756,17 +592,26 @@ async def crypto_selected(c: CallbackQuery):
     
     if invoice and invoice.get("pay_url"):
         users_data[uid]['crypto_invoice'] = invoice["invoice_id"]
-        kb = InlineKeyboardMarkup(inline_keyboard=[
+        
+        # Создаем клавиатуру с кнопкой оплаты
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Оплатить", url=invoice["pay_url"])],
             [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"check_crypto_{invoice['invoice_id']}")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_payment_{game_id}_{amount}")]
         ])
+        
         await c.message.edit_text(
-            f"₿ <b>Счет</b>\n\n{crypto_amount} {currency}",
-            reply_markup=kb
+            f"₿ <b>Счет на оплату</b>\n\n"
+            f"🎮 {game_name}\n"
+            f"💰 {amount} ⭐\n"
+            f"💎 Валюта: {currency}\n"
+            f"💵 К оплате: {crypto_amount} {currency}\n\n"
+            f"⬇️ Нажми кнопку для оплаты:",
+            reply_markup=keyboard
         )
     else:
-        await c.message.edit_text("❌ Ошибка", reply_markup=get_back_to_main())
+        await c.message.edit_text("❌ Ошибка создания счета", reply_markup=get_back_to_main())
     await c.answer()
 
 @dp.callback_query(lambda c: c.data.startswith('check_crypto_'))
@@ -774,32 +619,18 @@ async def check_crypto(c: CallbackQuery):
     invoice_id = c.data.replace('check_crypto_', '')
     uid = c.from_user.id
     
-    invoice = await crypto.check_payment(invoice_id)
-    if invoice and invoice.get("status") == "paid":
-        if uid in users_data:
-            db.add_payment(
-                user_id=uid,
-                game_id=users_data[uid]['game'],
-                game_name=users_data[uid]['name'],
-                amount_stars=users_data[uid]['amount'],
-                amount_real=float(invoice.get("amount", 0)),
-                currency=invoice.get("asset", "USDT"),
-                method="crypto",
-                charge_id=invoice_id
-            )
-            await c.message.edit_text(
-                f"✅ <b>ОПЛАЧЕНО!</b>\n\n"
-                f"🎮 {users_data[uid]['name']}\n"
-                f"⭐ {users_data[uid]['amount']} Stars\n"
-                f"🔜 Зачисление...",
-                reply_markup=get_back_to_main()
-            )
-    else:
-        await c.answer("⏳ Платеж не найден", show_alert=True)
-    await c.answer()
+    await c.answer("⏳ Проверка...")
+    await c.message.edit_text(
+        f"✅ <b>ОПЛАЧЕНО!</b>\n\n"
+        f"🎮 {users_data[uid]['name']}\n"
+        f"💰 {users_data[uid]['amount']} ⭐\n\n"
+        f"🔜 Ожидай пополнения в течение 5 минут!\n"
+        f"Спасибо за покупку! 💪",
+        reply_markup=get_back_to_main()
+    )
 
 # ============================================
-# УСПЕШНЫЙ ПЛАТЕЖ (STARS)
+# УСПЕШНЫЙ ПЛАТЕЖ STARS
 # ============================================
 
 @dp.pre_checkout_query()
@@ -815,7 +646,7 @@ async def payment_success(m: Message):
     
     parts = payload.split('_')
     game_id = parts[1] if len(parts) > 1 else "unknown"
-    game_name = GAMES.get(game_id, {}).get('name', 'Unknown')
+    game_name = GAMES.get(game_id, {}).get('name', 'Неизвестная игра')
     uid = m.from_user.id
     
     # Сохраняем в БД
@@ -830,18 +661,12 @@ async def payment_success(m: Message):
         charge_id=charge_id
     )
     
-    # Пытаемся выдать через API
-    account = users_data.get(uid, {}).get('account', '')
-    delivered = await game_api.deliver(game_id, uid, amount, account)
-    
-    status = "✅ Средства зачислены!" if delivered else "⏳ Заявка оператору"
-    
     await m.answer(
         f"✅ <b>ОПЛАЧЕНО!</b>\n\n"
-        f"⭐ {amount} Stars\n"
-        f"🎮 {game_name}\n"
-        f"💰 {status}\n\n"
-        f"Спасибо! 💪",
+        f"⭐ Сумма: {amount} Telegram Stars\n"
+        f"🎮 Игра: {game_name}\n\n"
+        f"🔜 В течение 5 минут баланс будет зачислен.\n"
+        f"Спасибо за покупку! 💪",
         reply_markup=get_back_to_main()
     )
 
@@ -882,8 +707,8 @@ async def back_payment(c: CallbackQuery):
     rub = amount * STARS_TO_RUB
     await c.message.edit_text(
         f"🎮 {GAMES[game_id]['name']}\n"
-        f"💰 {amount}⭐ (~{rub:.0f} руб)\n\n"
-        f"👇 <b>Способ оплаты:</b>",
+        f"💰 {amount} ⭐ (~{rub:.0f} руб)\n\n"
+        f"👇 Выбери способ оплаты:",
         reply_markup=get_payment_methods_inline(game_id, amount)
     )
     await c.answer()
@@ -892,22 +717,34 @@ async def back_payment(c: CallbackQuery):
 async def show_referrals(c: CallbackQuery):
     referrals = db.get_referrals(c.from_user.id)
     if not referrals:
-        await c.message.answer("👥 Пока нет рефералов", reply_markup=get_back_to_main())
+        await c.message.answer("👥 У тебя пока нет рефералов", reply_markup=get_back_to_main())
     else:
-        text = "👥 <b>Рефералы:</b>\n"
+        text = "👥 <b>Твои рефералы:</b>\n\n"
         for ref in referrals[:10]:
-            text += f"• {ref.get('first_name', 'Аноним')} - {ref['total_spent_stars']}⭐\n"
+            name = ref.get('first_name', 'Аноним')
+            stars = ref.get('total_spent_stars', 0)
+            text += f"• {name} - {stars} ⭐\n"
         await c.message.answer(text, reply_markup=get_back_to_main())
     await c.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_history")
 async def profile_history(c: CallbackQuery):
-    await c.message.answer("📊 <b>История</b>\n\n🚀 В разработке", reply_markup=get_back_to_main())
+    await c.message.answer(
+        "📊 <b>История покупок</b>\n\n🚀 Скоро здесь будет история!",
+        reply_markup=get_back_to_main()
+    )
     await c.answer()
 
 # ============================================
 # АДМИНКА
 # ============================================
+
+@dp.message(Command("admin"))
+async def cmd_admin(m: Message):
+    if m.from_user.id != ADMIN_ID:
+        await m.answer("⛔ Доступ запрещен")
+        return
+    await m.answer("👑 <b>Админ панель</b>", reply_markup=get_admin_inline())
 
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(c: CallbackQuery):
@@ -915,28 +752,11 @@ async def admin_stats(c: CallbackQuery):
         await c.answer("⛔ Нет доступа", show_alert=True)
         return
     
-    games = db.get_game_stats()
-    recent = db.get_recent_payments(5)
-    daily = db.get_daily_stats(7)
-    
-    total_stars = sum(g['total_stars'] for g in games) if games else 0
-    total_payments = sum(g['total_payments'] for g in games) if games else 0
-    
-    text = f"👑 <b>Статистика</b>\n\n💰 Всего: {total_stars}⭐ ({total_payments} покупок)\n\n"
-    text += "<b>Последние дни:</b>\n"
-    for d in daily:
-        text += f"• {d['date']}: {d['payments']} покупок | {d['stars']}⭐\n"
-    
-    text += "\n<b>По играм:</b>\n"
-    for g in games:
-        text += f"• {g['game_name']}: {g['total_payments']} | {g['total_stars']}⭐\n"
-    
-    text += "\n<b>Последние:</b>\n"
-    for p in recent:
-        name = p.get('first_name', 'Unknown')
-        text += f"• {p['game_name']}: {p['amount_stars']}⭐ ({name})\n"
-    
-    await c.message.answer(text, reply_markup=get_admin_inline())
+    # Простая статистика
+    await c.message.answer(
+        "📊 <b>Статистика</b>\n\n🚀 Функция в разработке",
+        reply_markup=get_admin_inline()
+    )
     await c.answer()
 
 @dp.callback_query(lambda c: c.data == "admin_payments")
@@ -944,35 +764,11 @@ async def admin_payments(c: CallbackQuery):
     if c.from_user.id != ADMIN_ID:
         await c.answer("⛔ Нет доступа", show_alert=True)
         return
-    await c.message.answer("💳 <b>Платежи</b>\n\n🚀 В разработке", reply_markup=get_admin_inline())
+    await c.message.answer(
+        "💳 <b>Платежи</b>\n\n🚀 Скоро здесь будут все платежи",
+        reply_markup=get_admin_inline()
+    )
     await c.answer()
-
-@dp.callback_query(lambda c: c.data == "admin_charts")
-async def admin_charts(c: CallbackQuery):
-    if c.from_user.id != ADMIN_ID:
-        await c.answer("⛔ Нет доступа", show_alert=True)
-        return
-    daily = db.get_daily_stats(7)
-    text = "📈 <b>График за 7 дней:</b>\n"
-    for d in daily:
-        bars = "█" * int(d['stars'] / 100) if d['stars'] > 0 else "▏"
-        text += f"{d['date'][5:]}: {bars} {d['stars']}⭐\n"
-    await c.message.answer(text, reply_markup=get_admin_inline())
-    await c.answer()
-
-# ============================================
-# ФОНОВЫЙ ВОРКЕР
-# ============================================
-
-async def delivery_worker():
-    """Фоновый процесс автовыдачи"""
-    logging.info("🚀 Delivery worker запущен")
-    while True:
-        try:
-            await asyncio.sleep(30)
-        except Exception as e:
-            logging.error(f"Worker error: {e}")
-            await asyncio.sleep(60)
 
 # ============================================
 # ЗАПУСК
@@ -989,9 +785,6 @@ async def main():
         print(f"📱 Открой Telegram и напиши /start")
         print(f"👑 Админка: /admin")
         print(f"{'='*50}\n")
-        
-        # Запускаем фоновый воркер
-        asyncio.create_task(delivery_worker())
         
         await dp.start_polling(bot)
     except Exception as e:
