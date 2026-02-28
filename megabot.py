@@ -42,7 +42,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"
 ADMIN_ID = 2091630272
 CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"
-CHANNEL_ID = -1001234567890  # ID твоего канала (ЗАМЕНИ НА СВОЙ!)
+CHANNEL_ID = -1003664296821  # ID твоего канала (ЗАМЕНИ НА СВОЙ!)
 
 # ============================================
 # НАСТРОЙКИ ПЛАТФОРМЫ
