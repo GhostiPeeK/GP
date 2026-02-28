@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-██████╗ ██████╗ ██████╗     ███████╗████████╗ █████╗ ██████╗ ██╗     ███████╗
-██╔══██╗╚════██╗╚════██╗    ██╔════╝╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝
-██████╔╝ █████╔╝ █████╔╝    ███████╗   ██║   ███████║██████╔╝██║     █████╗  
-██╔═══╝  ╚═══██╗ ╚═══██╗    ╚════██║   ██║   ██╔══██║██╔══██╗██║     ██╔══╝  
-██║     ██████╔╝██████╔╝    ███████║   ██║   ██║  ██║██████╔╝███████╗███████╗
-╚═╝     ╚═════╝ ╚═════╝     ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚══════╝╚══════╝
-
-              🎮 P2P ГЕЙМИНГ МАРКЕТПЛЕЙС + КРИПТО-БИРЖА 🎮
-                          СТАБИЛЬНАЯ ВЕРСИЯ
+██████╗ ██████╗ ██████╗     ██████╗  ██████╗ ████████╗
+██╔══██╗╚════██╗╚════██╗    ██╔══██╗██╔═══██╗╚══██╔══╝
+██████╔╝ █████╔╝ █████╔╝    ██████╔╝██║   ██║   ██║   
+██╔═══╝  ╚═══██╗ ╚═══██╗    ██╔═══╝ ██║   ██║   ██║   
+██║     ██████╔╝██████╔╝    ██║     ╚██████╔╝   ██║   
+╚═╝     ╚═════╝ ╚═════╝     ╚═╝      ╚═════╝    ╚═╝   
+                                                        
+         🎮 ГЕЙМИНГ P2P + КРИПТО-БИРЖА 🎮
+              СТАБИЛЬНАЯ РАБОЧАЯ ВЕРСИЯ
 """
 
 import os
 import sys
-import json
 import sqlite3
 import logging
 import asyncio
 import random
 import string
-import uuid
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -45,95 +42,89 @@ BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"
 ADMIN_ID = 2091630272
 
 # ============================================
-# НАСТРОЙКИ ПЛАТФОРМЫ
+# НАСТРОЙКИ
 # ============================================
 
-COMMISSION = 1.0  # Комиссия бота (%)
-ESCROW_TIME = 60  # Время на оплату (минут)
-MIN_DEAL_AMOUNT = 100  # Минимальная сумма (руб)
-REFERRAL_BONUS = 10  # Бонус рефереру (%)
+COMMISSION = 1.0  # %
+ESCROW_TIME = 60  # минут
+MIN_AMOUNT = 100  # рублей
+REFERRAL_BONUS = 10  # %
 
 # ============================================
 # ИГРЫ
 # ============================================
 
-GAMES = {
-    'pubg': {'name': 'PUBG Mobile', 'currency': 'UC', 'icon': '🪖'},
-    'brawl': {'name': 'Brawl Stars', 'currency': 'гемы', 'icon': '🥊'},
-    'freefire': {'name': 'Free Fire', 'currency': 'алмазы', 'icon': '🔥'},
-    'steam': {'name': 'Steam', 'currency': 'руб', 'icon': '🎮'},
-    'genshin': {'name': 'Genshin Impact', 'currency': 'кристаллы', 'icon': '✨'},
-    'cod': {'name': 'Call of Duty', 'currency': 'CP', 'icon': '🔫'},
-    'roblox': {'name': 'Roblox', 'currency': 'Robux', 'icon': '🎲'},
-    'fortnite': {'name': 'Fortnite', 'currency': 'V-bucks', 'icon': '🛡️'}
-}
+GAMES = [
+    {"id": "pubg", "name": "PUBG Mobile", "currency": "UC", "icon": "🪖"},
+    {"id": "brawl", "name": "Brawl Stars", "currency": "гемы", "icon": "🥊"},
+    {"id": "freefire", "name": "Free Fire", "currency": "алмазы", "icon": "🔥"},
+    {"id": "steam", "name": "Steam", "currency": "руб", "icon": "🎮"},
+    {"id": "genshin", "name": "Genshin Impact", "currency": "кристаллы", "icon": "✨"},
+    {"id": "cod", "name": "Call of Duty", "currency": "CP", "icon": "🔫"},
+    {"id": "roblox", "name": "Roblox", "currency": "Robux", "icon": "🎲"},
+    {"id": "fortnite", "name": "Fortnite", "currency": "V-bucks", "icon": "🛡️"},
+]
 
 # ============================================
 # КРИПТОВАЛЮТЫ
 # ============================================
 
-CRYPTO_CURRENCIES = {
-    'USDT': {'name': 'Tether', 'icon': '💵', 'network': 'TRC20'},
-    'TON': {'name': 'Toncoin', 'icon': '💎', 'network': 'TON'},
-    'BTC': {'name': 'Bitcoin', 'icon': '₿', 'network': 'BTC'}
-}
+CRYPTO = [
+    {"id": "usdt", "name": "USDT", "network": "TRC20", "icon": "💵"},
+    {"id": "ton", "name": "TON", "network": "TON", "icon": "💎"},
+    {"id": "btc", "name": "Bitcoin", "network": "BTC", "icon": "₿"},
+]
 
 # ============================================
 # ПЛАТЁЖНЫЕ МЕТОДЫ
 # ============================================
 
-PAYMENT_METHODS = {
-    'sbp': {'name': 'СБП', 'icon': '💳'},
-    'card': {'name': 'Карта', 'icon': '💳'},
-    'yoomoney': {'name': 'ЮMoney', 'icon': '💰'},
-    'qiwi': {'name': 'Qiwi', 'icon': '📱'},
-    'cash': {'name': 'Наличные', 'icon': '💵'}
-}
+PAYMENT_METHODS = [
+    {"id": "sbp", "name": "СБП", "icon": "💳"},
+    {"id": "card", "name": "Карта РФ", "icon": "💳"},
+    {"id": "yoomoney", "name": "ЮMoney", "icon": "💰"},
+    {"id": "qiwi", "name": "Qiwi", "icon": "📱"},
+    {"id": "cash", "name": "Наличные", "icon": "💵"},
+]
 
 # ============================================
-# СОСТОЯНИЯ FSM
+# FSM СОСТОЯНИЯ
 # ============================================
 
-class CreateOrder(StatesGroup):
-    choosing_market = State()  # game или crypto
-    choosing_item = State()     # игра или валюта
-    choosing_type = State()     # buy или sell
-    entering_amount = State()   # количество
-    entering_price = State()    # цена
-    entering_comment = State()  # комментарий
-    choosing_payment = State()  # способ оплаты
-    confirm = State()           # подтверждение
+class OrderStates(StatesGroup):
+    choosing_market = State()
+    choosing_item = State()
+    choosing_type = State()
+    entering_amount = State()
+    entering_price = State()
+    entering_comment = State()
+    choosing_payment = State()
+    confirming = State()
 
-class TradeProcess(StatesGroup):
+class TradeStates(StatesGroup):
+    entering_amount = State()
     waiting_payment = State()
-    waiting_confirmation = State()
-    waiting_review = State()
 
 # ============================================
 # БАЗА ДАННЫХ (ПРОСТАЯ И РАБОЧАЯ)
 # ============================================
 
 class Database:
-    def __init__(self, db_name="p2p_bot.db"):
-        self.db_name = db_name
-        self.init_db()
+    def __init__(self):
+        self.conn = sqlite3.connect('p2p_bot.db', check_same_thread=False)
+        self.cursor = self.conn.cursor()
+        self.create_tables()
     
-    def get_connection(self):
-        return sqlite3.connect(self.db_name)
-    
-    def init_db(self):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
+    def create_tables(self):
         # Пользователи
-        cursor.execute('''
+        self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 first_name TEXT,
-                registered_at TIMESTAMP,
-                referrer_id INTEGER DEFAULT NULL,
-                referral_code TEXT UNIQUE,
+                registered_at TEXT,
+                referrer_id INTEGER,
+                referral_code TEXT,
                 rating REAL DEFAULT 5.0,
                 deals INTEGER DEFAULT 0,
                 balance REAL DEFAULT 0
@@ -141,13 +132,14 @@ class Database:
         ''')
         
         # Ордера
-        cursor.execute('''
+        self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 market_type TEXT,
                 item_id TEXT,
                 item_name TEXT,
+                item_icon TEXT,
                 order_type TEXT,
                 amount REAL,
                 price REAL,
@@ -155,12 +147,12 @@ class Database:
                 comment TEXT,
                 payment_method TEXT,
                 status TEXT DEFAULT 'active',
-                created_at TIMESTAMP
+                created_at TEXT
             )
         ''')
         
         # Сделки
-        cursor.execute('''
+        self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 order_id INTEGER,
@@ -170,46 +162,41 @@ class Database:
                 total REAL,
                 commission REAL,
                 status TEXT DEFAULT 'pending',
-                created_at TIMESTAMP,
-                expires_at TIMESTAMP
+                created_at TEXT,
+                expires_at TEXT
             )
         ''')
         
-        conn.commit()
-        conn.close()
+        self.conn.commit()
     
     # ========== ПОЛЬЗОВАТЕЛИ ==========
     
     def add_user(self, user_id, username, first_name, referrer_code=None):
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        # Проверяем, есть ли уже
+        self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        if self.cursor.fetchone():
+            return
         
         ref_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
         
         referrer_id = None
         if referrer_code:
-            cursor.execute('SELECT user_id FROM users WHERE referral_code = ?', (referrer_code,))
-            res = cursor.fetchone()
+            self.cursor.execute('SELECT user_id FROM users WHERE referral_code = ?', (referrer_code,))
+            res = self.cursor.fetchone()
             if res:
                 referrer_id = res[0]
         
-        cursor.execute('''
-            INSERT OR REPLACE INTO users 
-            (user_id, username, first_name, registered_at, referrer_id, referral_code)
+        self.cursor.execute('''
+            INSERT INTO users (user_id, username, first_name, registered_at, referrer_id, referral_code)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, username, first_name, datetime.now(), referrer_id, ref_code))
+        ''', (user_id, username, first_name, datetime.now().isoformat(), referrer_id, ref_code))
         
-        conn.commit()
-        conn.close()
+        self.conn.commit()
         return ref_code
     
     def get_user(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
+        self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        row = self.cursor.fetchone()
         if row:
             return {
                 'user_id': row[0],
@@ -226,31 +213,34 @@ class Database:
     
     # ========== ОРДЕРА ==========
     
-    def create_order(self, user_id, market_type, item_id, item_name, order_type, 
-                    amount, price, comment, payment_method):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
+    def create_order(self, user_id, market_type, item, order_type, amount, price, comment, payment_method):
         total = amount * price
         
-        cursor.execute('''
+        self.cursor.execute('''
             INSERT INTO orders 
-            (user_id, market_type, item_id, item_name, order_type, amount, price, total, comment, payment_method, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, market_type, item_id, item_name, order_type, amount, price, total, 
-              comment, payment_method, datetime.now()))
+            (user_id, market_type, item_id, item_name, item_icon, order_type, amount, price, total, comment, payment_method, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id, 
+            market_type, 
+            item['id'], 
+            item['name'], 
+            item['icon'], 
+            order_type, 
+            amount, 
+            price, 
+            total, 
+            comment, 
+            payment_method,
+            datetime.now().isoformat()
+        ))
         
-        order_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return order_id
+        self.conn.commit()
+        return self.cursor.lastrowid
     
-    def get_active_orders(self, market_type=None, item_id=None, limit=20):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        query = 'SELECT * FROM orders WHERE status = "active"'
-        params = []
+    def get_orders(self, market_type=None, item_id=None, status='active'):
+        query = 'SELECT * FROM orders WHERE status = ?'
+        params = [status]
         
         if market_type:
             query += ' AND market_type = ?'
@@ -260,12 +250,10 @@ class Database:
             query += ' AND item_id = ?'
             params.append(item_id)
         
-        query += ' ORDER BY created_at DESC LIMIT ?'
-        params.append(limit)
+        query += ' ORDER BY created_at DESC'
         
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        self.cursor.execute(query, params)
+        rows = self.cursor.fetchall()
         
         orders = []
         for row in rows:
@@ -275,24 +263,21 @@ class Database:
                 'market_type': row[2],
                 'item_id': row[3],
                 'item_name': row[4],
-                'order_type': row[5],
-                'amount': row[6],
-                'price': row[7],
-                'total': row[8],
-                'comment': row[9],
-                'payment_method': row[10],
-                'status': row[11],
-                'created_at': row[12]
+                'item_icon': row[5],
+                'order_type': row[6],
+                'amount': row[7],
+                'price': row[8],
+                'total': row[9],
+                'comment': row[10],
+                'payment_method': row[11],
+                'status': row[12],
+                'created_at': row[13]
             })
         return orders
     
     def get_order(self, order_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
+        self.cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
+        row = self.cursor.fetchone()
         if row:
             return {
                 'id': row[0],
@@ -300,105 +285,66 @@ class Database:
                 'market_type': row[2],
                 'item_id': row[3],
                 'item_name': row[4],
-                'order_type': row[5],
-                'amount': row[6],
-                'price': row[7],
-                'total': row[8],
-                'comment': row[9],
-                'payment_method': row[10],
-                'status': row[11],
-                'created_at': row[12]
+                'item_icon': row[5],
+                'order_type': row[6],
+                'amount': row[7],
+                'price': row[8],
+                'total': row[9],
+                'comment': row[10],
+                'payment_method': row[11],
+                'status': row[12],
+                'created_at': row[13]
             }
         return None
     
-    def close_order(self, order_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE orders SET status = "completed" WHERE id = ?', (order_id,))
-        conn.commit()
-        conn.close()
+    def update_order_amount(self, order_id, new_amount):
+        if new_amount <= 0:
+            self.cursor.execute('UPDATE orders SET status = "completed" WHERE id = ?', (order_id,))
+        else:
+            self.cursor.execute('UPDATE orders SET amount = ? WHERE id = ?', (new_amount, order_id))
+        self.conn.commit()
     
     # ========== СДЕЛКИ ==========
     
     def create_trade(self, order_id, buyer_id, amount):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
         order = self.get_order(order_id)
         if not order:
-            conn.close()
             return None
         
         total = amount * order['price']
         commission = total * (COMMISSION / 100)
         
-        cursor.execute('''
-            INSERT INTO trades 
-            (order_id, seller_id, buyer_id, amount, total, commission, created_at, expires_at)
+        self.cursor.execute('''
+            INSERT INTO trades (order_id, seller_id, buyer_id, amount, total, commission, created_at, expires_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (order_id, order['user_id'], buyer_id, amount, total, commission, 
-              datetime.now(), datetime.now() + timedelta(minutes=ESCROW_TIME)))
+        ''', (
+            order_id, 
+            order['user_id'], 
+            buyer_id, 
+            amount, 
+            total, 
+            commission,
+            datetime.now().isoformat(),
+            (datetime.now() + timedelta(minutes=ESCROW_TIME)).isoformat()
+        ))
         
-        trade_id = cursor.lastrowid
+        trade_id = self.cursor.lastrowid
         
         # Обновляем ордер
         new_amount = order['amount'] - amount
-        if new_amount <= 0:
-            cursor.execute('UPDATE orders SET status = "completed" WHERE id = ?', (order_id,))
-        else:
-            cursor.execute('UPDATE orders SET amount = ? WHERE id = ?', (new_amount, order_id))
+        self.update_order_amount(order_id, new_amount)
         
-        conn.commit()
-        conn.close()
+        self.conn.commit()
         return trade_id
     
-    def get_trade(self, trade_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM trades WHERE id = ?', (trade_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            return {
-                'id': row[0],
-                'order_id': row[1],
-                'seller_id': row[2],
-                'buyer_id': row[3],
-                'amount': row[4],
-                'total': row[5],
-                'commission': row[6],
-                'status': row[7],
-                'created_at': row[8],
-                'expires_at': row[9]
-            }
-        return None
-    
-    def complete_trade(self, trade_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE trades SET status = "completed" WHERE id = ?', (trade_id,))
-        
-        # Начисляем комиссию админу
-        trade = self.get_trade(trade_id)
-        if trade:
-            cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', 
-                          (trade['commission'], ADMIN_ID))
-        
-        conn.commit()
-        conn.close()
-    
     def get_user_trades(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
+        self.cursor.execute('''
             SELECT * FROM trades 
             WHERE seller_id = ? OR buyer_id = ?
-            ORDER BY created_at DESC LIMIT 10
+            ORDER BY created_at DESC
         ''', (user_id, user_id))
-        rows = cursor.fetchall()
-        conn.close()
         
+        rows = self.cursor.fetchall()
         trades = []
         for row in rows:
             trades.append({
@@ -418,7 +364,18 @@ class Database:
 db = Database()
 
 # ============================================
-# КЛАВИАТУРЫ (ПРОСТЫЕ И ПОНЯТНЫЕ)
+# БОТ
+# ============================================
+
+storage = MemoryStorage()
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+dp = Dispatcher(storage=storage)
+
+# Временные данные
+user_temp = {}
+
+# ============================================
+# КЛАВИАТУРЫ
 # ============================================
 
 def main_keyboard():
@@ -427,7 +384,7 @@ def main_keyboard():
         KeyboardButton(text="🎮 Игры"),
         KeyboardButton(text="💰 Крипта"),
         KeyboardButton(text="👤 Профиль"),
-        KeyboardButton(text="📞 Помощь")
+        KeyboardButton(text="❓ Помощь")
     ]
     builder.add(*buttons)
     builder.adjust(2, 2)
@@ -435,19 +392,25 @@ def main_keyboard():
 
 def games_keyboard():
     builder = InlineKeyboardBuilder()
-    for game_id, game in GAMES.items():
-        builder.button(text=f"{game['icon']} {game['name']}", callback_data=f"game_{game_id}")
+    for game in GAMES:
+        builder.button(
+            text=f"{game['icon']} {game['name']}", 
+            callback_data=f"game_{game['id']}"
+        )
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_game_order"))
+    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_game"))
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu"))
     return builder.as_markup()
 
 def crypto_keyboard():
     builder = InlineKeyboardBuilder()
-    for curr_id, curr in CRYPTO_CURRENCIES.items():
-        builder.button(text=f"{curr['icon']} {curr_id}", callback_data=f"crypto_{curr_id}")
+    for crypto in CRYPTO:
+        builder.button(
+            text=f"{crypto['icon']} {crypto['name']}", 
+            callback_data=f"crypto_{crypto['id']}"
+        )
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_crypto_order"))
+    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_crypto"))
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu"))
     return builder.as_markup()
 
@@ -461,8 +424,8 @@ def order_type_keyboard():
 
 def payment_keyboard():
     builder = InlineKeyboardBuilder()
-    for pid, pm in PAYMENT_METHODS.items():
-        builder.button(text=f"{pm['icon']} {pm['name']}", callback_data=f"payment_{pid}")
+    for pm in PAYMENT_METHODS:
+        builder.button(text=f"{pm['icon']} {pm['name']}", callback_data=f"payment_{pm['id']}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
     return builder.as_markup()
@@ -473,22 +436,6 @@ def back_keyboard():
     builder.button(text="🏠 Главное меню", callback_data="main_menu")
     builder.adjust(2)
     return builder.as_markup()
-
-def profile_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📊 Мои сделки", callback_data="my_trades")
-    builder.button(text="💰 Баланс", callback_data="balance")
-    builder.button(text="🏠 Главное меню", callback_data="main_menu")
-    builder.adjust(2, 1)
-    return builder.as_markup()
-
-# ============================================
-# БОТ
-# ============================================
-
-storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-dp = Dispatcher(storage=storage)
 
 # ============================================
 # СТАРТ
@@ -504,10 +451,9 @@ async def cmd_start(message: Message):
     
     await message.answer(
         f"👋 <b>Привет, {user.first_name}!</b>\n\n"
-        f"🎮 Здесь ты можешь:\n"
-        f"• Покупать и продавать игровую валюту\n"
-        f"• Торговать криптовалютой P2P\n"
-        f"• Безопасные сделки через гаранта\n\n"
+        f"🎮 P2P биржа игровой валюты и крипты\n"
+        f"🤝 Безопасные сделки через гаранта\n"
+        f"💰 Комиссия {COMMISSION}%\n\n"
         f"👇 Выбери раздел:",
         reply_markup=main_keyboard()
     )
@@ -522,32 +468,39 @@ async def games_section(message: Message):
 
 @dp.message(lambda m: m.text == "💰 Крипта")
 async def crypto_section(message: Message):
-    await message.answer("💰 <b>Выбери валюту:</b>", reply_markup=crypto_keyboard())
+    await message.answer("💰 <b>Выбери криптовалюту:</b>", reply_markup=crypto_keyboard())
 
 @dp.message(lambda m: m.text == "👤 Профиль")
 async def profile_section(message: Message):
     user = db.get_user(message.from_user.id)
     if user:
+        trades = db.get_user_trades(message.from_user.id)
         text = (
-            f"👤 <b>Твой профиль</b>\n\n"
-            f"📊 Сделок: {user['deals']}\n"
+            f"👤 <b>Профиль</b>\n\n"
+            f"📊 Сделок: {len(trades)}\n"
             f"⭐ Рейтинг: {user['rating']}\n"
             f"💰 Баланс: {user['balance']} ₽\n"
         )
-        await message.answer(text, reply_markup=profile_keyboard())
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📊 Мои сделки", callback_data="my_trades")
+        builder.button(text="🏠 Главное меню", callback_data="main_menu")
+        builder.adjust(2)
+        
+        await message.answer(text, reply_markup=builder.as_markup())
 
-@dp.message(lambda m: m.text == "📞 Помощь")
+@dp.message(lambda m: m.text == "❓ Помощь")
 async def help_section(message: Message):
     text = (
-        "📞 <b>Помощь</b>\n\n"
-        "1. Найди ордер\n"
-        "2. Нажми «Купить»\n"
-        "3. Введи количество\n"
-        "4. Оплати продавцу\n"
-        "5. Подтверди получение\n\n"
+        "❓ <b>Помощь</b>\n\n"
+        "1️⃣ <b>Найди ордер</b> — выбери игру или крипту\n"
+        "2️⃣ <b>Нажми «Купить»</b> — введи количество\n"
+        "3️⃣ <b>Оплати</b> — переведи деньги продавцу\n"
+        "4️⃣ <b>Подтверди</b> — нажми «Я оплатил»\n"
+        "5️⃣ <b>Получи</b> — продавец подтвердит и товар твой\n\n"
         f"⏱ Время на оплату: {ESCROW_TIME} минут\n"
         f"💰 Комиссия: {COMMISSION}%\n\n"
-        "❓ Вопросы: @admin"
+        f"📞 Связь с админом: @p2p_support"
     )
     await message.answer(text, reply_markup=back_keyboard())
 
@@ -566,32 +519,27 @@ async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "back")
 async def back_callback(callback: CallbackQuery, state: FSMContext):
-    current_state = await state.get_state()
-    
-    if current_state:
-        await state.clear()
-        await callback.message.edit_text(
-            "🎮 <b>Выбери игру:</b>",
-            reply_markup=games_keyboard()
-        )
-    else:
-        await callback.message.edit_text(
-            "🎮 <b>Выбери игру:</b>",
-            reply_markup=games_keyboard()
-        )
-    
+    await state.clear()
+    await callback.message.edit_text(
+        "🎮 <b>Выбери игру:</b>",
+        reply_markup=games_keyboard()
+    )
     await callback.answer()
 
 # ============================================
-# ПРОСМОТР ОРДЕРОВ (ИГРЫ)
+# ПОКАЗ ОРДЕРОВ (ИГРЫ)
 # ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('game_'))
 async def show_game_orders(callback: CallbackQuery):
     game_id = callback.data.replace('game_', '')
-    game = GAMES[game_id]
+    game = next((g for g in GAMES if g['id'] == game_id), None)
     
-    orders = db.get_active_orders(market_type='game', item_id=game_id)
+    if not game:
+        await callback.answer("❌ Игра не найдена")
+        return
+    
+    orders = db.get_orders(market_type='game', item_id=game_id)
     
     if not orders:
         await callback.message.edit_text(
@@ -604,13 +552,11 @@ async def show_game_orders(callback: CallbackQuery):
         return
     
     text = f"{game['icon']} <b>{game['name']} - ордера:</b>\n\n"
-    
     builder = InlineKeyboardBuilder()
     
     for order in orders[:5]:
         emoji = "📈" if order['order_type'] == 'sell' else "📉"
         text += f"{emoji} {order['amount']:.0f} {game['currency']} × {order['price']}₽ = {order['total']:.0f}₽\n"
-        
         builder.button(
             text=f"{emoji} {order['amount']:.0f} {game['currency']}",
             callback_data=f"view_order_{order['id']}"
@@ -624,19 +570,23 @@ async def show_game_orders(callback: CallbackQuery):
     await callback.answer()
 
 # ============================================
-# ПРОСМОТР ОРДЕРОВ (КРИПТА)
+# ПОКАЗ ОРДЕРОВ (КРИПТА)
 # ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('crypto_'))
 async def show_crypto_orders(callback: CallbackQuery):
-    curr_id = callback.data.replace('crypto_', '')
-    currency = CRYPTO_CURRENCIES[curr_id]
+    crypto_id = callback.data.replace('crypto_', '')
+    crypto = next((c for c in CRYPTO if c['id'] == crypto_id), None)
     
-    orders = db.get_active_orders(market_type='crypto', item_id=curr_id)
+    if not crypto:
+        await callback.answer("❌ Валюта не найдена")
+        return
+    
+    orders = db.get_orders(market_type='crypto', item_id=crypto_id)
     
     if not orders:
         await callback.message.edit_text(
-            f"{currency['icon']} <b>{curr_id}</b>\n\n"
+            f"{crypto['icon']} <b>{crypto['name']}</b>\n\n"
             f"Нет активных ордеров.\n"
             f"Создай первый! 🚀",
             reply_markup=back_keyboard()
@@ -644,21 +594,19 @@ async def show_crypto_orders(callback: CallbackQuery):
         await callback.answer()
         return
     
-    text = f"{currency['icon']} <b>{curr_id} - ордера:</b>\n\n"
-    
+    text = f"{crypto['icon']} <b>{crypto['name']} - ордера:</b>\n\n"
     builder = InlineKeyboardBuilder()
     
     for order in orders[:5]:
         emoji = "📈" if order['order_type'] == 'sell' else "📉"
-        text += f"{emoji} {order['amount']} {curr_id} × {order['price']}₽ = {order['total']:.0f}₽\n"
-        
+        text += f"{emoji} {order['amount']} {crypto_id.upper()} × {order['price']}₽ = {order['total']:.0f}₽\n"
         builder.button(
-            text=f"{emoji} {order['amount']} {curr_id}",
+            text=f"{emoji} {order['amount']} {crypto_id.upper()}",
             callback_data=f"view_order_{order['id']}"
         )
     
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data=f"create_crypto_{curr_id}"))
+    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data=f"create_crypto_{crypto_id}"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
@@ -677,156 +625,172 @@ async def view_order(callback: CallbackQuery):
         await callback.answer("❌ Ордер не найден", show_alert=True)
         return
     
-    if order['market_type'] == 'game':
-        game = GAMES[order['item_id']]
-        icon = game['icon']
-        currency = game['currency']
-    else:
-        currency = CRYPTO_CURRENCIES[order['item_id']]
-        icon = currency['icon']
-        currency = order['item_id']
-    
     text = (
-        f"{icon} <b>{order['item_name']}</b>\n"
+        f"{order['item_icon']} <b>{order['item_name']}</b>\n"
         f"{'📈 ПРОДАЖА' if order['order_type'] == 'sell' else '📉 ПОКУПКА'}\n\n"
-        
-        f"💰 Количество: {order['amount']} {currency}\n"
+        f"💰 Количество: {order['amount']}\n"
         f"💵 Цена: {order['price']} ₽\n"
-        f"💎 Сумма: {order['total']} ₽\n\n"
+        f"💎 Сумма: {order['total']} ₽\n"
     )
     
     if order['comment']:
-        text += f"📝 {order['comment']}\n\n"
+        text += f"\n📝 {order['comment']}\n"
     
-    text += f"🕐 Создан: {order['created_at'][:16]}"
+    text += f"\n🕐 {order['created_at'][:16]}"
     
     builder = InlineKeyboardBuilder()
     
-    if order['order_type'] == 'sell':
-        builder.button(text="💎 Купить", callback_data=f"buy_{order_id}")
-    else:
-        builder.button(text="💎 Продать", callback_data=f"sell_{order_id}")
+    if order['order_type'] == 'sell' and order['user_id'] != callback.from_user.id:
+        builder.button(text="💎 Купить", callback_data=f"buy_{order['id']}")
     
-    builder.button(text="⭐ В избранное", callback_data=f"fav_{order_id}")
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"{order['market_type']}_{order['item_id']}"))
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
 
 # ============================================
-# СОЗДАНИЕ ОРДЕРА (ИГРЫ)
+# СОЗДАНИЕ ОРДЕРА (НАЧАЛО)
 # ============================================
 
-@dp.callback_query(lambda c: c.data.startswith('create_game_'))
-async def create_game_order_start(callback: CallbackQuery, state: FSMContext):
-    game_id = callback.data.replace('create_game_', '')
-    game = GAMES[game_id]
+@dp.callback_query(lambda c: c.data == "create_game")
+async def create_game_start(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(market_type='game')
     
-    await state.update_data(market_type='game', item_id=game_id, item_name=game['name'])
-    await state.set_state(CreateOrder.choosing_type)
+    builder = InlineKeyboardBuilder()
+    for game in GAMES:
+        builder.button(text=f"{game['icon']} {game['name']}", callback_data=f"create_item_{game['id']}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
     
     await callback.message.edit_text(
-        f"{game['icon']} <b>{game['name']}</b>\n\n"
+        "🎮 <b>Выбери игру:</b>",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "create_crypto")
+async def create_crypto_start(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(market_type='crypto')
+    
+    builder = InlineKeyboardBuilder()
+    for crypto in CRYPTO:
+        builder.button(text=f"{crypto['icon']} {crypto['name']}", callback_data=f"create_item_{crypto['id']}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
+    
+    await callback.message.edit_text(
+        "💰 <b>Выбери валюту:</b>",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith('create_item_'))
+async def create_order_item(callback: CallbackQuery, state: FSMContext):
+    item_id = callback.data.replace('create_item_', '')
+    data = await state.get_data()
+    
+    if data['market_type'] == 'game':
+        item = next((g for g in GAMES if g['id'] == item_id), None)
+    else:
+        item = next((c for c in CRYPTO if c['id'] == item_id), None)
+    
+    if not item:
+        await callback.answer("❌ Не найдено")
+        return
+    
+    await state.update_data(item=item)
+    await state.set_state(OrderStates.choosing_type)
+    
+    await callback.message.edit_text(
+        f"{item['icon']} <b>{item['name']}</b>\n\n"
         f"Ты хочешь купить или продать?",
         reply_markup=order_type_keyboard()
     )
     await callback.answer()
 
-@dp.callback_query(CreateOrder.choosing_type, lambda c: c.data.startswith('type_'))
+@dp.callback_query(OrderStates.choosing_type, lambda c: c.data.startswith('type_'))
 async def create_order_type(callback: CallbackQuery, state: FSMContext):
     order_type = callback.data.replace('type_', '')
-    
     await state.update_data(order_type=order_type)
-    await state.set_state(CreateOrder.entering_amount)
+    await state.set_state(OrderStates.entering_amount)
     
     await callback.message.edit_text(
         f"💰 <b>Введи количество:</b>\n\n"
-        f"Минимальная сумма: {MIN_DEAL_AMOUNT} ₽"
+        f"Отправь число (например: 100)"
     )
     await callback.answer()
 
-@dp.message(CreateOrder.entering_amount)
-async def create_order_amount(message: Message, state: FSMContext):
+# ============================================
+# ВВОД ДАННЫХ
+# ============================================
+
+@dp.message(OrderStates.entering_amount)
+async def enter_amount(message: Message, state: FSMContext):
     try:
         amount = float(message.text)
         if amount <= 0:
             raise ValueError
     except:
-        await message.answer("❌ Введи число больше 0")
+        await message.answer("❌ Введи положительное число")
         return
     
     await state.update_data(amount=amount)
-    await state.set_state(CreateOrder.entering_price)
-    
-    await message.answer(
-        f"💵 <b>Введи цену за единицу (в ₽):</b>"
-    )
+    await state.set_state(OrderStates.entering_price)
+    await message.answer(f"💵 <b>Введи цену за единицу (в ₽):</b>")
 
-@dp.message(CreateOrder.entering_price)
-async def create_order_price(message: Message, state: FSMContext):
+@dp.message(OrderStates.entering_price)
+async def enter_price(message: Message, state: FSMContext):
     try:
         price = float(message.text)
         if price <= 0:
             raise ValueError
     except:
-        await message.answer("❌ Введи число больше 0")
+        await message.answer("❌ Введи положительное число")
         return
     
     data = await state.get_data()
     total = data['amount'] * price
     
-    if total < MIN_DEAL_AMOUNT:
-        await message.answer(f"❌ Минимальная сумма сделки {MIN_DEAL_AMOUNT} ₽. Увеличь количество или цену.")
+    if total < MIN_AMOUNT:
+        await message.answer(f"❌ Минимальная сумма {MIN_AMOUNT} ₽. Увеличь количество или цену.")
         return
     
     await state.update_data(price=price)
-    await state.set_state(CreateOrder.entering_comment)
-    
+    await state.set_state(OrderStates.entering_comment)
     await message.answer(
-        f"📝 <b>Добавь комментарий (или отправь «-» чтобы пропустить):</b>"
+        f"📝 <b>Комментарий (или отправь «-» чтобы пропустить):</b>"
     )
 
-@dp.message(CreateOrder.entering_comment)
-async def create_order_comment(message: Message, state: FSMContext):
+@dp.message(OrderStates.entering_comment)
+async def enter_comment(message: Message, state: FSMContext):
     comment = message.text if message.text != '-' else ''
-    
     await state.update_data(comment=comment)
-    await state.set_state(CreateOrder.choosing_payment)
+    await state.set_state(OrderStates.choosing_payment)
     
     await message.answer(
         f"💳 <b>Выбери способ оплаты:</b>",
         reply_markup=payment_keyboard()
     )
 
-@dp.callback_query(CreateOrder.choosing_payment, lambda c: c.data.startswith('payment_'))
-async def create_order_payment(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(OrderStates.choosing_payment, lambda c: c.data.startswith('payment_'))
+async def choose_payment(callback: CallbackQuery, state: FSMContext):
     payment = callback.data.replace('payment_', '')
+    pm = next((p for p in PAYMENT_METHODS if p['id'] == payment), None)
     
-    await state.update_data(payment_method=payment)
-    await state.set_state(CreateOrder.confirm)
+    await state.update_data(payment_method=payment, payment_name=pm['name'])
+    await state.set_state(OrderStates.confirming)
     
     data = await state.get_data()
     total = data['amount'] * data['price']
     
-    if data['market_type'] == 'game':
-        game = GAMES[data['item_id']]
-        icon = game['icon']
-        name = game['name']
-        currency = game['currency']
-    else:
-        currency = CRYPTO_CURRENCIES[data['item_id']]
-        icon = currency['icon']
-        name = data['item_id']
-        currency = data['item_id']
-    
     text = (
-        f"{icon} <b>Проверь данные:</b>\n\n"
+        f"{data['item']['icon']} <b>Проверь данные:</b>\n\n"
         f"Тип: {'📈 Продажа' if data['order_type'] == 'sell' else '📉 Покупка'}\n"
-        f"Товар: {name}\n"
-        f"Количество: {data['amount']} {currency}\n"
+        f"Товар: {data['item']['name']}\n"
+        f"Количество: {data['amount']}\n"
         f"Цена: {data['price']} ₽\n"
         f"Сумма: {total} ₽\n"
-        f"Оплата: {PAYMENT_METHODS[data['payment_method']]['name']}\n"
+        f"Оплата: {pm['name']}\n"
     )
     
     if data['comment']:
@@ -836,21 +800,20 @@ async def create_order_payment(callback: CallbackQuery, state: FSMContext):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Да, создать", callback_data="confirm_order")
-    builder.button(text="❌ Нет, заново", callback_data="restart")
+    builder.button(text="❌ Нет, заново", callback_data="cancel_order")
     builder.adjust(2)
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
 
-@dp.callback_query(CreateOrder.confirm, lambda c: c.data == "confirm_order")
+@dp.callback_query(OrderStates.confirming, lambda c: c.data == "confirm_order")
 async def confirm_order(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     
     order_id = db.create_order(
         user_id=callback.from_user.id,
         market_type=data['market_type'],
-        item_id=data['item_id'],
-        item_name=data['item_name'],
+        item=data['item'],
         order_type=data['order_type'],
         amount=data['amount'],
         price=data['price'],
@@ -863,8 +826,17 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"✅ <b>Ордер создан!</b>\n\n"
         f"ID: {order_id}\n"
-        f"Ты можешь найти его в списке ордеров.",
+        f"Он появится в списке ордеров.",
         reply_markup=back_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "cancel_order")
+async def cancel_order(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        "❌ Создание отменено",
+        reply_markup=games_keyboard()
     )
     await callback.answer()
 
@@ -873,7 +845,7 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
 # ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('buy_'))
-async def buy_order(callback: CallbackQuery, state: FSMContext):
+async def buy_order_start(callback: CallbackQuery, state: FSMContext):
     order_id = int(callback.data.replace('buy_', ''))
     order = db.get_order(order_id)
     
@@ -881,7 +853,12 @@ async def buy_order(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Ордер уже недоступен", show_alert=True)
         return
     
+    if order['user_id'] == callback.from_user.id:
+        await callback.answer("❌ Нельзя купить свой ордер", show_alert=True)
+        return
+    
     await state.update_data(order_id=order_id)
+    await state.set_state(TradeStates.entering_amount)
     
     await callback.message.edit_text(
         f"💰 <b>Введи количество:</b>\n\n"
@@ -891,8 +868,51 @@ async def buy_order(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
+@dp.message(TradeStates.entering_amount)
+async def buy_enter_amount(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text)
+    except:
+        await message.answer("❌ Введи число")
+        return
+    
+    data = await state.get_data()
+    order = db.get_order(data['order_id'])
+    
+    if not order:
+        await message.answer("❌ Ордер не найден")
+        await state.clear()
+        return
+    
+    if amount > order['amount']:
+        await message.answer(f"❌ Максимум {order['amount']}")
+        return
+    
+    if amount * order['price'] < MIN_AMOUNT:
+        await message.answer(f"❌ Минимальная сумма {MIN_AMOUNT} ₽")
+        return
+    
+    # Создаём сделку
+    trade_id = db.create_trade(data['order_id'], message.from_user.id, amount)
+    
+    if not trade_id:
+        await message.answer("❌ Ошибка создания сделки")
+        await state.clear()
+        return
+    
+    await state.clear()
+    
+    await message.answer(
+        f"✅ <b>Сделка создана!</b>\n\n"
+        f"ID: {trade_id}\n"
+        f"Сумма: {amount * order['price']} ₽\n\n"
+        f"💰 Переведи деньги продавцу\n"
+        f"⏱ Время: {ESCROW_TIME} минут",
+        reply_markup=back_keyboard()
+    )
+
 # ============================================
-# ПРОФИЛЬ
+# МОИ СДЕЛКИ
 # ============================================
 
 @dp.callback_query(lambda c: c.data == "my_trades")
@@ -914,16 +934,6 @@ async def my_trades(callback: CallbackQuery):
         text += f"{status} {trade['total']} ₽ - {trade['created_at'][:16]}\n"
     
     await callback.message.edit_text(text, reply_markup=back_keyboard())
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "balance")
-async def show_balance(callback: CallbackQuery):
-    user = db.get_user(callback.from_user.id)
-    await callback.message.edit_text(
-        f"💰 <b>Твой баланс:</b>\n\n"
-        f"{user['balance']} ₽",
-        reply_markup=back_keyboard()
-    )
     await callback.answer()
 
 # ============================================
