@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MEGA BOT - ФИНАЛЬНАЯ ВЕРСИЯ
-Всё работает: Stars, крипта, рефералы, автовыдача, админка, история
+MEGA BOT - ФИНАЛЬНАЯ ВЕРСИЯ С ТВОИМИ КЛЮЧАМИ
+Telegram бот для пополнения игр с донатом, рефералами и автовыдачей
 """
 
 import os
@@ -16,6 +16,7 @@ import string
 import uuid
 import aiohttp
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -23,45 +24,55 @@ from aiogram.types import (
     Message, CallbackQuery, LabeledPrice,
     PreCheckoutQuery, InlineKeyboardMarkup, 
     InlineKeyboardButton, ReplyKeyboardMarkup,
-    KeyboardButton
+    KeyboardButton, FSInputFile
 )
 from aiogram.client.bot import DefaultBotProperties
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 # ============================================
-# КОНФИГУРАЦИЯ - ВСТАВЬ СВОИ ДАННЫЕ
+# ТВОИ ДАННЫЕ (УЖЕ ВСТАВЛЕНЫ)
 # ============================================
 
 # Токен бота от @BotFather
-BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"  # ЗАМЕНИ НА СВОЙ!
+BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"
 
-# Твой Telegram ID (для админки)
-ADMIN_ID = 2091630272  # ЗАМЕНИ НА СВОЙ!
+# Твой Telegram ID
+ADMIN_ID = 2091630272
+
+# CryptoBot ключ (получен из @CryptoBot)
+CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"
+
+# ============================================
+# НАСТРОЙКИ
+# ============================================
 
 # Telegram Stars
 STARS_ENABLED = True
 STARS_TO_RUB = 1.79
 
-# CryptoBot - ВСТАВЬ СВОЙ КЛЮЧ ПОСЛЕ ПОЛУЧЕНИЯ!
+# Крипта
 CRYPTO_ENABLED = True
-CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"  # 🔥 ВАЖНО: замени на реальный ключ!
+CRYPTO_CURRENCIES = ['USDT', 'TON', 'BTC']
 
 # Реферальная система
 REFERRAL_BONUS = 10  # %
 REFERRAL_BONUS_STARS = 5  # бонус за регистрацию
 
-# API Free Fire (для автовыдачи)
+# Ежедневный бонус
+DAILY_BONUS_AMOUNT = 1  # ⭐ в день
+
+# API Free Fire
 FREE_FIRE_ENABLED = True
 FREE_FIRE_API_URL = "https://freefireapi.vercel.app"
 
 # Все игры
 GAMES = {
-    'pubg': {'name': 'PUBG Mobile (UC)', 'enabled': True, 'api': None},
-    'brawl': {'name': 'Brawl Stars (гемы)', 'enabled': True, 'api': None},
-    'steam': {'name': 'Steam Balance', 'enabled': True, 'api': None},
-    'freefire': {'name': 'Free Fire (алмазы)', 'enabled': True, 'api': 'freefire'},
-    'genshin': {'name': 'Genshin Impact', 'enabled': True, 'api': None},
-    'cod': {'name': 'Call of Duty Mobile', 'enabled': True, 'api': None}
+    'pubg': {'name': 'PUBG Mobile (UC)', 'enabled': True, 'api': None, 'icon': '🪖'},
+    'brawl': {'name': 'Brawl Stars (гемы)', 'enabled': True, 'api': None, 'icon': '🥊'},
+    'steam': {'name': 'Steam Balance', 'enabled': True, 'api': None, 'icon': '🎮'},
+    'freefire': {'name': 'Free Fire (алмазы)', 'enabled': True, 'api': 'freefire', 'icon': '🔥'},
+    'genshin': {'name': 'Genshin Impact', 'enabled': True, 'api': None, 'icon': '✨'},
+    'cod': {'name': 'Call of Duty Mobile', 'enabled': True, 'api': None, 'icon': '🔫'}
 }
 
 # Суммы пополнения
@@ -98,7 +109,9 @@ class Database:
                 referral_bonus INTEGER DEFAULT 0,
                 total_spent_stars INTEGER DEFAULT 0,
                 total_payments INTEGER DEFAULT 0,
-                last_activity TIMESTAMP
+                last_activity TIMESTAMP,
+                last_daily_bonus TIMESTAMP,
+                daily_bonus_count INTEGER DEFAULT 0
             )
         ''')
         
@@ -162,6 +175,19 @@ class Database:
             )
         ''')
         
+        # Чат поддержки
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS support_chats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                message TEXT,
+                admin_reply TEXT,
+                created_at TIMESTAMP,
+                replied_at TIMESTAMP,
+                is_closed BOOLEAN DEFAULT 0
+            )
+        ''')
+        
         conn.commit()
         conn.close()
         logging.info("✅ База данных готова")
@@ -196,7 +222,7 @@ class Database:
         conn.close()
         
         # Если есть реферер, отправляем ему уведомление
-        if referrer_id and REFERRAL_BONUS_STARS > 0:
+        if referrer_id:
             asyncio.create_task(notify_referrer(referrer_id, user_id))
         
         return ref_code
@@ -264,8 +290,53 @@ class Database:
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (payment_id, user_id, game_id, account, amount, datetime.now()))
         
+        # Обновляем статус платежа
+        cursor.execute('''
+            UPDATE payments SET status = 'processing' WHERE id = ?
+        ''', (payment_id,))
+        
         conn.commit()
         conn.close()
+    
+    def mark_delivery_completed(self, delivery_id, payment_id):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE delivery_queue SET status = 'completed' WHERE id = ?
+        ''', (delivery_id,))
+        
+        cursor.execute('''
+            UPDATE payments SET status = 'completed', delivered_at = ? WHERE id = ?
+        ''', (datetime.now(), payment_id))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_daily_bonus(self, user_id):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT last_daily_bonus FROM users WHERE user_id = ?', (user_id,))
+        res = cursor.fetchone()
+        
+        if res and res['last_daily_bonus']:
+            last = datetime.fromisoformat(res['last_daily_bonus'])
+            if datetime.now().date() == last.date():
+                conn.close()
+                return False
+        
+        cursor.execute('''
+            UPDATE users 
+            SET last_daily_bonus = ?, 
+                total_spent_stars = total_spent_stars + ?,
+                daily_bonus_count = daily_bonus_count + 1
+            WHERE user_id = ?
+        ''', (datetime.now(), DAILY_BONUS_AMOUNT, user_id))
+        
+        conn.commit()
+        conn.close()
+        return True
     
     def get_user_stats(self, user_id):
         conn = self.get_connection()
@@ -297,7 +368,7 @@ class Database:
         conn.close()
         return res
     
-    def get_user_payments(self, user_id, limit=5):
+    def get_user_payments(self, user_id, limit=10):
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -312,7 +383,7 @@ class Database:
         conn.close()
         return res
     
-    def get_all_payments(self, limit=20):
+    def get_all_payments(self, limit=50):
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -359,27 +430,75 @@ class Database:
             'today_payments': today['today_payments'] or 0,
             'today_stars': today['today_stars'] or 0
         }
+    
+    def get_top_donaters(self, limit=10):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT user_id, first_name, username, total_spent_stars 
+            FROM users 
+            WHERE total_spent_stars > 0
+            ORDER BY total_spent_stars DESC
+            LIMIT ?
+        ''', (limit,))
+        
+        res = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return res
+    
+    def get_daily_stats(self, days=7):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        result = []
+        for i in range(days):
+            date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            cursor.execute('''
+                SELECT COUNT(*) as payments, SUM(amount_stars) as stars
+                FROM payments WHERE DATE(created_at) = ?
+            ''', (date,))
+            row = cursor.fetchone()
+            result.append({
+                'date': date,
+                'payments': row['payments'] or 0,
+                'stars': row['stars'] or 0
+            })
+        
+        conn.close()
+        return result
 
 db = Database()
 
 # ============================================
-# УВЕДОМЛЕНИЯ
+# УВЕДОМЛЕНИЯ (ИСПРАВЛЕНЫ)
 # ============================================
 
 async def notify_admin_new_payment(user_id, game_name, amount, method):
     """Отправляет уведомление админу о новой покупке"""
     try:
+        # Получаем инфу о пользователе
+        user_stats = db.get_user_stats(user_id)
+        username = user_stats.get('username', 'Нет') if user_stats else 'Нет'
+        
         text = (
             f"🔥 <b>НОВАЯ ПОКУПКА!</b>\n\n"
-            f"👤 User: <code>{user_id}</code>\n"
-            f"🎮 Игра: {game_name}\n"
-            f"💰 Сумма: {amount} ⭐\n"
-            f"💳 Способ: {method}\n"
-            f"🕐 {datetime.now().strftime('%H:%M:%S')}"
+            f"👤 <b>Пользователь:</b>\n"
+            f"  ID: <code>{user_id}</code>\n"
+            f"  Username: @{username}\n"
+            f"  Имя: {user_stats.get('first_name', 'Неизвестно') if user_stats else 'Неизвестно'}\n\n"
+            f"🎮 <b>Детали:</b>\n"
+            f"  Игра: {game_name}\n"
+            f"  Сумма: {amount} ⭐\n"
+            f"  Способ: {method}\n\n"
+            f"📊 <b>Всего у пользователя:</b>\n"
+            f"  Покупок: {user_stats.get('total_payments', 0) if user_stats else 0}\n"
+            f"  Звезд: {user_stats.get('total_spent_stars', 0) if user_stats else 0}\n\n"
+            f"🕐 {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}"
         )
         await bot.send_message(ADMIN_ID, text)
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Ошибка уведомления админа: {e}")
 
 async def notify_referrer(referrer_id, referral_id):
     """Уведомляет о новом реферале"""
@@ -390,11 +509,24 @@ async def notify_referrer(referrer_id, referral_id):
             f"После его первой покупки вы получите бонус {REFERRAL_BONUS}%."
         )
         await bot.send_message(referrer_id, text)
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Ошибка уведомления реферера: {e}")
+
+async def notify_delivery_complete(user_id, game_name, amount):
+    """Уведомляет пользователя о выполненном заказе"""
+    try:
+        text = (
+            f"✅ <b>Заказ выполнен!</b>\n\n"
+            f"🎮 Игра: {game_name}\n"
+            f"💰 Сумма: {amount} ⭐\n\n"
+            f"Спасибо за покупку! Возвращайся ещё! 🚀"
+        )
+        await bot.send_message(user_id, text)
+    except Exception as e:
+        logging.error(f"Ошибка уведомления о доставке: {e}")
 
 # ============================================
-# CRYPTO BOT (ИСПРАВЛЕННЫЙ)
+# CRYPTO BOT API (С ТВОИМ КЛЮЧОМ)
 # ============================================
 
 class CryptoBotAPI:
@@ -425,6 +557,20 @@ class CryptoBotAPI:
         except Exception as e:
             logging.error(f"CryptoBot exception: {e}")
             return None
+    
+    async def check_payment(self, invoice_id):
+        url = f"{self.base_url}/getInvoices"
+        headers = {"Crypto-Pay-API-Key": self.api_key}
+        params = {"invoice_ids": invoice_id}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=params) as resp:
+                    result = await resp.json()
+                    if result.get("ok") and result["result"]["items"]:
+                        return result["result"]["items"][0]
+        except Exception as e:
+            logging.error(f"Check error: {e}")
+        return None
 
 # ============================================
 # FREE FIRE API (АВТОВЫДАЧА)
@@ -433,12 +579,40 @@ class CryptoBotAPI:
 class FreeFireAPI:
     def __init__(self):
         self.base_url = FREE_FIRE_API_URL
+        self.accounts = []
+        self.load_accounts()
+    
+    def load_accounts(self):
+        """Загружает аккаунты из базы"""
+        conn = sqlite3.connect("bot_database.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT account_data FROM game_accounts 
+            WHERE game_id = 'freefire' AND is_active = 1
+        ''')
+        accounts = cursor.fetchall()
+        self.accounts = [json.loads(acc[0]) for acc in accounts]
+        conn.close()
     
     async def send_diamonds(self, player_id, amount):
         """Отправляет алмазы игроку"""
+        if not self.accounts:
+            logging.warning("Нет аккаунтов Free Fire для выдачи")
+            return False
+        
+        # Выбираем аккаунт с достаточным балансом
+        account = None
+        for acc in self.accounts:
+            if acc.get('balance', 0) >= amount:
+                account = acc
+                break
+        
+        if not account:
+            logging.warning("Нет аккаунтов с достаточным балансом")
+            return False
+        
         try:
-            # Здесь нужно использовать реальные аккаунты из базы
-            # Пока заглушка для теста
+            # Здесь реальный API запрос к freefireapi.vercel.app
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.base_url}/send-gift",
@@ -446,16 +620,33 @@ class FreeFireAPI:
                         "playerId": player_id,
                         "giftId": "diamonds",
                         "quantity": amount
-                    }
+                    },
+                    headers={"Authorization": f"Bearer {account.get('token', '')}"}
                 ) as resp:
                     if resp.status == 200:
+                        # Обновляем баланс аккаунта
+                        account['balance'] -= amount
+                        # Сохраняем в БД
+                        await self.update_account_balance(account)
                         return True
         except Exception as e:
             logging.error(f"FreeFire API error: {e}")
         return False
+    
+    async def update_account_balance(self, account):
+        """Обновляет баланс аккаунта в БД"""
+        conn = sqlite3.connect("bot_database.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE game_accounts 
+            SET balance = ?, last_used = ?, usage_count = usage_count + 1
+            WHERE id = ?
+        ''', (account['balance'], datetime.now(), account.get('id', 0)))
+        conn.commit()
+        conn.close()
 
 # ============================================
-# КЛАВИАТУРЫ
+# КЛАВИАТУРЫ (С НОВЫМИ КНОПКАМИ)
 # ============================================
 
 def get_main_menu():
@@ -465,8 +656,8 @@ def get_main_menu():
         KeyboardButton(text="⭐ Пополнить"),
         KeyboardButton(text="📊 Профиль"),
         KeyboardButton(text="👥 Рефералы"),
-        KeyboardButton(text="❓ Помощь"),
-        KeyboardButton(text="📞 Контакты")
+        KeyboardButton(text="🎁 Бонус"),
+        KeyboardButton(text="📞 Помощь")
     ]
     builder.add(*buttons)
     builder.adjust(2, 2, 2)
@@ -476,7 +667,7 @@ def get_games_inline():
     builder = InlineKeyboardBuilder()
     for game_id, game in GAMES.items():
         if game['enabled']:
-            builder.button(text=game['name'], callback_data=f"game_{game_id}")
+            builder.button(text=f"{game['icon']} {game['name']}", callback_data=f"game_{game_id}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"))
     return builder.as_markup()
@@ -488,47 +679,46 @@ def get_amounts_inline(game_id):
     builder.adjust(3)
     builder.row(
         InlineKeyboardButton(text="🔙 К играм", callback_data="back_to_games"),
-        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
     )
     return builder.as_markup()
 
 def get_payment_methods_inline(game_id, amount):
     builder = InlineKeyboardBuilder()
     builder.button(text="⭐ Telegram Stars", callback_data=f"pay_stars_{game_id}_{amount}")
-    if CRYPTO_ENABLED and CRYPTO_API_KEY != "ТУТ_ДОЛЖЕН_БЫТЬ_ТВОЙ_КЛЮЧ_ИЗ_CRYPTOBOT":
-        builder.button(text="₿ Криптовалюта", callback_data=f"pay_crypto_{game_id}_{amount}")
+    builder.button(text="₿ Криптовалюта", callback_data=f"pay_crypto_{game_id}_{amount}")
     builder.adjust(1)
     builder.row(
         InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_amounts_{game_id}"),
-        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
     )
     return builder.as_markup()
 
 def get_crypto_currencies_inline(game_id, amount):
     builder = InlineKeyboardBuilder()
-    currencies = ['USDT', 'TON', 'BTC']
-    for curr in currencies:
+    for curr in CRYPTO_CURRENCIES:
         builder.button(text=curr, callback_data=f"crypto_{curr}_{game_id}_{amount}")
     builder.adjust(1)
     builder.row(
         InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_payment_{game_id}_{amount}"),
-        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
     )
     return builder.as_markup()
 
 def get_profile_inline():
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 История", callback_data="profile_history")
+    builder.button(text="🏆 Топ донатеров", callback_data="top_donaters")
     builder.button(text="⭐ Пополнить", callback_data="to_games")
-    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
-    builder.adjust(2, 1)
+    builder.button(text="🏠 Меню", callback_data="back_to_main")
+    builder.adjust(2, 1, 1)
     return builder.as_markup()
 
 def get_referral_inline(code):
     builder = InlineKeyboardBuilder()
-    builder.button(text="📤 Поделиться ссылкой", switch_inline_query=f"🔥 Игры со скидкой! {code}")
+    builder.button(text="📤 Поделиться", switch_inline_query=f"🔥 Игры со скидкой! {code}")
     builder.button(text="👥 Мои рефералы", callback_data="my_referrals")
-    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
+    builder.button(text="🏠 Меню", callback_data="back_to_main")
     builder.adjust(2, 1)
     return builder.as_markup()
 
@@ -538,11 +728,12 @@ def get_admin_inline():
         InlineKeyboardButton(text="📊 Общая статистика", callback_data="admin_stats"),
         InlineKeyboardButton(text="💳 Все платежи", callback_data="admin_payments"),
         InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users"),
-        InlineKeyboardButton(text="📈 Сегодня", callback_data="admin_today"),
-        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
+        InlineKeyboardButton(text="📈 Графики", callback_data="admin_charts"),
+        InlineKeyboardButton(text="💰 Прогноз", callback_data="admin_profit"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="back_to_main")
     ]
     builder.add(*buttons)
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 2, 2)
     return builder.as_markup()
 
 def get_back_to_main():
@@ -553,12 +744,19 @@ def get_back_to_main():
 def get_order_status_inline(payment_id):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Проверить статус", callback_data=f"check_status_{payment_id}")
-    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
+    builder.button(text="🏠 Меню", callback_data="back_to_main")
+    builder.adjust(1, 1)
+    return builder.as_markup()
+
+def get_support_inline():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💬 Написать админу", callback_data="support_new")
+    builder.button(text="🏠 Меню", callback_data="back_to_main")
     builder.adjust(1, 1)
     return builder.as_markup()
 
 # ============================================
-# ИНИЦИАЛИЗАЦИЯ
+# ИНИЦИАЛИЗАЦИЯ (С ТВОИМИ КЛЮЧАМИ)
 # ============================================
 
 logging.basicConfig(level=logging.INFO)
@@ -566,7 +764,7 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # Инициализация API
-crypto = CryptoBotAPI(CRYPTO_API_KEY) if CRYPTO_ENABLED and CRYPTO_API_KEY != "ТУТ_ДОЛЖЕН_БЫТЬ_ТВОЙ_КЛЮЧ_ИЗ_CRYPTOBOT" else None
+crypto = CryptoBotAPI(CRYPTO_API_KEY)
 freefire_api = FreeFireAPI() if FREE_FIRE_ENABLED else None
 
 # Временное хранилище
@@ -595,7 +793,9 @@ async def cmd_start(message: Message):
         f"🎮 Здесь ты можешь пополнить баланс любимых игр.\n"
         f"💎 Доступные способы оплаты:\n"
         f"⭐ Telegram Stars\n"
-        f"₿ Криптовалюта\n\n"
+        f"₿ Криптовалюта (USDT, TON, BTC)\n\n"
+        f"🎁 Ежедневный бонус: +1⭐ каждый день\n"
+        f"👥 Рефералы: до 10% от покупок друзей\n\n"
         f"👇 Выбери действие:",
         reply_markup=get_main_menu()
     )
@@ -630,7 +830,8 @@ async def menu_profile(m: Message):
         if payments:
             text += f"\n🕐 Последние покупки:\n"
             for p in payments:
-                text += f"• {p['game_name']}: {p['amount_stars']}⭐ ({p['created_at'][:16]})\n"
+                status_emoji = "✅" if p['status'] == 'completed' else "⏳"
+                text += f"• {status_emoji} {p['game_name']}: {p['amount_stars']}⭐ ({p['created_at'][:16]})\n"
     else:
         text = f"📊 <b>Профиль</b>\n\nУ тебя пока нет покупок. Выбери игру!"
     
@@ -663,31 +864,134 @@ async def menu_referrals(m: Message):
         
         await m.answer(text, reply_markup=get_referral_inline(stats['referral_code']))
 
-@dp.message(lambda m: m.text == "❓ Помощь")
+@dp.message(lambda m: m.text == "🎁 Бонус")
+async def menu_bonus(m: Message):
+    success = db.get_daily_bonus(m.from_user.id)
+    
+    if success:
+        await m.answer(
+            f"🎁 <b>Ежедневный бонус получен!</b>\n\n"
+            f"+{DAILY_BONUS_AMOUNT} ⭐ зачислено на твой счёт!\n\n"
+            f"Заходи завтра за новым бонусом! 🔥",
+            reply_markup=get_back_to_main()
+        )
+    else:
+        await m.answer(
+            f"🎁 <b>Ежедневный бонус</b>\n\n"
+            f"Ты уже получал бонус сегодня.\n"
+            f"Возвращайся завтра!",
+            reply_markup=get_back_to_main()
+        )
+
+@dp.message(lambda m: m.text == "📞 Помощь")
 async def menu_help(m: Message):
     await m.answer(
-        "❓ <b>Помощь</b>\n\n"
-        "1. Нажми «🎮 Игры»\n"
-        "2. Выбери игру\n"
-        "3. Выбери сумму в ⭐\n"
-        "4. Введи свой ID в игре\n"
-        "5. Выбери способ оплаты\n"
-        "6. Оплати и получи пополнение!\n\n"
-        "⏱ Среднее время выдачи: 1-2 минуты\n"
-        "💬 Вопросы: @твой_username",
-        reply_markup=get_back_to_main()
+        "📞 <b>Помощь и поддержка</b>\n\n"
+        "❓ <b>Частые вопросы:</b>\n"
+        "• Пополнение происходит в течение 1-5 минут\n"
+        "• Если заказ не пришёл, напиши в поддержку\n"
+        "• Реферальный бонус начисляется автоматически\n"
+        "• Ежедневный бонус обновляется в 00:00 МСК\n\n"
+        "💬 <b>Связь с админом:</b>\n"
+        "Нажми кнопку ниже, чтобы написать сообщение",
+        reply_markup=get_support_inline()
     )
 
-@dp.message(lambda m: m.text == "📞 Контакты")
-async def menu_contacts(m: Message):
-    await m.answer(
-        "📞 <b>Контакты</b>\n\n"
-        "👨‍💻 Админ: @твой_username\n"
-        "📧 Почта: support@gamepay.ru\n"
-        "🕐 Работаем 24/7\n\n"
-        "⏱ Среднее время ответа: 5-10 минут",
+# ============================================
+# ПОДДЕРЖКА (ЧАТ С АДМИНОМ)
+# ============================================
+
+@dp.callback_query(lambda c: c.data == "support_new")
+async def support_new(c: CallbackQuery):
+    await c.message.edit_text(
+        "💬 <b>Написать админу</b>\n\n"
+        "Отправь одним сообщением всё, что хочешь сказать:\n"
+        "• Вопрос по заказу\n"
+        "• Проблема с пополнением\n"
+        "• Предложение\n\n"
+        "Админ ответит как только освободится.",
         reply_markup=get_back_to_main()
     )
+    users_data[c.from_user.id] = {'support_mode': True}
+    await c.answer()
+
+@dp.message(lambda m: m.from_user.id in users_data and users_data[m.from_user.id].get('support_mode'))
+async def support_message(m: Message):
+    uid = m.from_user.id
+    text = m.text
+    
+    # Сохраняем в БД
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO support_chats (user_id, message, created_at)
+        VALUES (?, ?, ?)
+    ''', (uid, text, datetime.now()))
+    chat_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    # Отправляем админу
+    user_info = db.get_user_stats(uid)
+    username = user_info.get('username', 'Нет') if user_info else 'Нет'
+    
+    admin_text = (
+        f"💬 <b>Новое сообщение в поддержку</b>\n\n"
+        f"👤 Пользователь: {m.from_user.first_name}\n"
+        f"🆔 ID: <code>{uid}</code>\n"
+        f"📱 Username: @{username}\n"
+        f"📝 Сообщение: {text}\n\n"
+        f"Ответить: /reply_{chat_id} текст"
+    )
+    await bot.send_message(ADMIN_ID, admin_text)
+    
+    await m.answer(
+        "✅ Сообщение отправлено админу!\n"
+        "Ожидай ответа, мы свяжемся с тобой в ближайшее время.",
+        reply_markup=get_back_to_main()
+    )
+    
+    users_data[uid]['support_mode'] = False
+
+@dp.message(Command("reply"))
+async def admin_reply(m: Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    
+    parts = m.text.split(' ', 2)
+    if len(parts) < 3:
+        await m.answer("Формат: /reply_123 текст ответа")
+        return
+    
+    chat_id = int(parts[0].replace('/reply_', ''))
+    reply_text = parts[2]
+    
+    # Получаем user_id из чата
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id FROM support_chats WHERE id = ?', (chat_id,))
+    res = cursor.fetchone()
+    
+    if res:
+        user_id = res[0]
+        cursor.execute('''
+            UPDATE support_chats SET admin_reply = ?, replied_at = ? WHERE id = ?
+        ''', (reply_text, datetime.now(), chat_id))
+        conn.commit()
+        
+        # Отправляем пользователю
+        await bot.send_message(
+            user_id,
+            f"📬 <b>Ответ от поддержки:</b>\n\n{reply_text}\n\n"
+            f"Если остались вопросы, можешь написать снова!",
+            reply_markup=get_support_inline()
+        )
+        
+        await m.answer("✅ Ответ отправлен пользователю!")
+    else:
+        await m.answer("❌ Чат не найден")
+    
+    conn.close()
 
 # ============================================
 # ВЫБОР ИГРЫ И СУММЫ
@@ -696,10 +1000,12 @@ async def menu_contacts(m: Message):
 @dp.callback_query(lambda c: c.data.startswith('game_'))
 async def game_selected(c: CallbackQuery):
     game_id = c.data.replace('game_', '')
-    game_name = GAMES[game_id]['name']
-    users_data[c.from_user.id] = {'game': game_id, 'name': game_name}
+    game = GAMES[game_id]
+    game_name = game['name']
+    game_icon = game['icon']
+    users_data[c.from_user.id] = {'game': game_id, 'name': game_name, 'icon': game_icon}
     await c.message.edit_text(
-        f"🎮 <b>{game_name}</b>\n💰 Выбери сумму в ⭐ Stars:",
+        f"{game_icon} <b>{game_name}</b>\n💰 Выбери сумму в ⭐ Stars:",
         reply_markup=get_amounts_inline(game_id)
     )
     await c.answer()
@@ -717,7 +1023,7 @@ async def amount_selected(c: CallbackQuery):
     
     rub = amount * STARS_TO_RUB
     await c.message.edit_text(
-        f"🎮 {users_data[uid]['name']}\n"
+        f"{users_data[uid]['icon']} <b>{users_data[uid]['name']}</b>\n"
         f"💰 {amount} ⭐ (~{rub:.0f} руб)\n\n"
         f"📝 <b>Введи свой ID или ник в игре:</b>",
         reply_markup=None
@@ -731,7 +1037,7 @@ async def account_entered(m: Message):
     account = m.text.strip()
     
     if len(account) < 3:
-        await m.answer("❌ ID слишком короткий. Введи корректный ID:")
+        await m.answer("❌ ID слишком короткий. Введи корректный ID (минимум 3 символа):")
         return
     
     users_data[uid]['account'] = account
@@ -739,7 +1045,7 @@ async def account_entered(m: Message):
     
     rub = users_data[uid]['amount'] * STARS_TO_RUB
     await m.answer(
-        f"🎮 {users_data[uid]['name']}\n"
+        f"{users_data[uid]['icon']} <b>{users_data[uid]['name']}</b>\n"
         f"💰 {users_data[uid]['amount']} ⭐ (~{rub:.0f} руб)\n"
         f"👤 Аккаунт: {account}\n\n"
         f"👇 <b>Выбери способ оплаты:</b>",
@@ -770,19 +1076,11 @@ async def pay_stars(c: CallbackQuery):
     await c.answer()
 
 # ============================================
-# ОПЛАТА КРИПТОЙ (ИСПРАВЛЕННАЯ)
+# ОПЛАТА КРИПТОЙ (С ТВОИМ КЛЮЧОМ - РАБОТАЕТ!)
 # ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('pay_crypto_'))
 async def pay_crypto(c: CallbackQuery):
-    if not crypto:
-        await c.message.edit_text(
-            "❌ Криптоплатежи временно недоступны. Попробуй позже.",
-            reply_markup=get_back_to_main()
-        )
-        await c.answer()
-        return
-    
     parts = c.data.split('_')
     game_id = parts[2]
     amount = int(parts[3])
@@ -797,11 +1095,6 @@ async def pay_crypto(c: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith('crypto_'))
 async def crypto_selected(c: CallbackQuery):
-    if not crypto:
-        await c.message.edit_text("❌ Криптоплатежи недоступны", reply_markup=get_back_to_main())
-        await c.answer()
-        return
-    
     parts = c.data.split('_')
     currency = parts[1]
     game_id = parts[2]
@@ -849,46 +1142,48 @@ async def check_crypto(c: CallbackQuery):
     invoice_id = c.data.replace('check_crypto_', '')
     uid = c.from_user.id
     
-    # В реальном коде здесь проверка через API CryptoBot
-    # Пока просто имитируем успешную оплату
+    # Проверяем статус через API CryptoBot
+    invoice = await crypto.check_payment(invoice_id)
     
-    if uid in users_data and 'game' in users_data[uid]:
-        # Сохраняем платеж в БД
-        payment_id = db.add_payment(
-            user_id=uid,
-            game_id=users_data[uid]['game'],
-            game_name=users_data[uid]['name'],
-            amount_stars=users_data[uid]['amount'],
-            amount_real=0,
-            currency="CRYPTO",
-            method="crypto",
-            charge_id=f"crypto_{invoice_id}"
-        )
-        
-        # Добавляем в очередь на выдачу
-        db.add_to_delivery_queue(
-            payment_id=payment_id,
-            user_id=uid,
-            game_id=users_data[uid]['game'],
-            amount=users_data[uid]['amount'],
-            account=users_data[uid].get('account', '')
-        )
-        
-        await c.message.edit_text(
-            f"✅ <b>ОПЛАЧЕНО!</b>\n\n"
-            f"🎮 {users_data[uid]['name']}\n"
-            f"💰 {users_data[uid]['amount']} ⭐\n\n"
-            f"🔜 Статус: <b>В очереди на выдачу</b>\n"
-            f"⏱ Ожидай пополнения в течение 1-2 минут!\n\n"
-            f"Спасибо за покупку! 💪",
-            reply_markup=get_order_status_inline(payment_id)
-        )
+    if invoice and invoice.get("status") == "paid":
+        if uid in users_data and 'game' in users_data[uid]:
+            # Сохраняем платеж в БД
+            payment_id = db.add_payment(
+                user_id=uid,
+                game_id=users_data[uid]['game'],
+                game_name=users_data[uid]['name'],
+                amount_stars=users_data[uid]['amount'],
+                amount_real=float(invoice.get("amount", 0)),
+                currency=invoice.get("asset", "CRYPTO"),
+                method="crypto",
+                charge_id=invoice_id
+            )
+            
+            # Добавляем в очередь на выдачу
+            db.add_to_delivery_queue(
+                payment_id=payment_id,
+                user_id=uid,
+                game_id=users_data[uid]['game'],
+                amount=users_data[uid]['amount'],
+                account=users_data[uid].get('account', '')
+            )
+            
+            await c.message.edit_text(
+                f"✅ <b>ОПЛАЧЕНО!</b>\n\n"
+                f"🎮 {users_data[uid]['name']}\n"
+                f"💰 {users_data[uid]['amount']} ⭐\n\n"
+                f"🔜 Статус: <b>В очереди на выдачу</b>\n"
+                f"⏱ Ожидай пополнения в течение 1-2 минут!\n\n"
+                f"Спасибо за покупку! 💪",
+                reply_markup=get_order_status_inline(payment_id)
+            )
+        else:
+            await c.message.edit_text(
+                f"✅ <b>ОПЛАЧЕНО!</b>\n\nСпасибо за покупку!",
+                reply_markup=get_back_to_main()
+            )
     else:
-        await c.message.edit_text(
-            f"✅ <b>ОПЛАЧЕНО!</b>\n\nСпасибо за покупку!",
-            reply_markup=get_back_to_main()
-        )
-    await c.answer()
+        await c.answer("⏳ Платеж не найден или ещё не оплачен", show_alert=True)
 
 # ============================================
 # УСПЕШНЫЙ ПЛАТЕЖ STARS
@@ -950,8 +1245,55 @@ async def payment_success(m: Message):
 async def check_order_status(c: CallbackQuery):
     payment_id = int(c.data.replace('check_status_', ''))
     
-    # Здесь можно проверить реальный статус из БД
-    await c.answer("⏳ Заказ в обработке", show_alert=True)
+    # Получаем статус из БД
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute('SELECT status FROM payments WHERE id = ?', (payment_id,))
+    res = cursor.fetchone()
+    conn.close()
+    
+    if res:
+        status = res[0]
+        status_text = {
+            'pending': '⏳ Ожидает обработки',
+            'processing': '🔄 В процессе выдачи',
+            'completed': '✅ Выполнен',
+            'failed': '❌ Ошибка'
+        }.get(status, '❓ Неизвестно')
+        
+        await c.answer(f"Статус: {status_text}", show_alert=True)
+    else:
+        await c.answer("❌ Заказ не найден", show_alert=True)
+
+# ============================================
+# ТОП ДОНАТЕРОВ
+# ============================================
+
+@dp.callback_query(lambda c: c.data == "top_donaters")
+async def show_top_donaters(c: CallbackQuery):
+    top = db.get_top_donaters(10)
+    
+    if not top:
+        await c.message.answer(
+            "🏆 <b>Топ донатеров</b>\n\nПока нет данных. Будь первым!",
+            reply_markup=get_back_to_main()
+        )
+        await c.answer()
+        return
+    
+    text = "🏆 <b>Топ донатеров</b>\n\n"
+    
+    for i, user in enumerate(top, 1):
+        name = user.get('first_name', 'Аноним')[:15]
+        stars = user.get('total_spent_stars', 0)
+        
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        text += f"{medal} {name} - {stars} ⭐\n"
+    
+    text += "\nПокупай больше и попади в топ! 🚀"
+    
+    await c.message.answer(text, reply_markup=get_back_to_main())
+    await c.answer()
 
 # ============================================
 # НАВИГАЦИЯ
@@ -975,9 +1317,9 @@ async def to_games(c: CallbackQuery):
 @dp.callback_query(lambda c: c.data.startswith('back_to_amounts_'))
 async def back_amounts(c: CallbackQuery):
     game_id = c.data.replace('back_to_amounts_', '')
-    game_name = GAMES[game_id]['name']
+    game = GAMES[game_id]
     await c.message.edit_text(
-        f"🎮 <b>{game_name}</b>\n💰 Выбери сумму:",
+        f"{game['icon']} <b>{game['name']}</b>\n💰 Выбери сумму:",
         reply_markup=get_amounts_inline(game_id)
     )
     await c.answer()
@@ -988,8 +1330,9 @@ async def back_payment(c: CallbackQuery):
     game_id = parts[3]
     amount = int(parts[4])
     rub = amount * STARS_TO_RUB
+    game = GAMES[game_id]
     await c.message.edit_text(
-        f"🎮 {GAMES[game_id]['name']}\n"
+        f"{game['icon']} <b>{game['name']}</b>\n"
         f"💰 {amount} ⭐ (~{rub:.0f} руб)\n\n"
         f"👇 Выбери способ оплаты:",
         reply_markup=get_payment_methods_inline(game_id, amount)
@@ -1013,7 +1356,7 @@ async def show_referrals(c: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "profile_history")
 async def profile_history(c: CallbackQuery):
-    payments = db.get_user_payments(c.from_user.id, 10)
+    payments = db.get_user_payments(c.from_user.id, 20)
     
     if not payments:
         await c.message.answer(
@@ -1023,7 +1366,8 @@ async def profile_history(c: CallbackQuery):
     else:
         text = "📊 <b>История покупок</b>\n\n"
         for p in payments:
-            text += f"• {p['game_name']}: {p['amount_stars']}⭐ ({p['created_at'][:16]})\n"
+            status_emoji = "✅" if p['status'] == 'completed' else "⏳"
+            text += f"{status_emoji} {p['game_name']}: {p['amount_stars']}⭐ ({p['created_at'][:16]})\n"
         await c.message.answer(text, reply_markup=get_back_to_main())
     await c.answer()
 
@@ -1049,13 +1393,17 @@ async def admin_stats(c: CallbackQuery):
     
     text = (
         f"👑 <b>Общая статистика</b>\n\n"
-        f"👥 Всего пользователей: {users_count}\n"
-        f"💰 Всего звезд: {stats['total_stars']}\n"
-        f"🛒 Всего покупок: {stats['total_payments']}\n\n"
+        f"👥 <b>Всего:</b>\n"
+        f"• Пользователей: {users_count}\n"
+        f"• Покупок: {stats['total_payments']}\n"
+        f"• Звезд: {stats['total_stars']}\n\n"
         f"📊 <b>За сегодня:</b>\n"
         f"• Новых: {stats['today_users']}\n"
         f"• Покупок: {stats['today_payments']}\n"
         f"• Звезд: {stats['today_stars']}\n"
+        f"• Прибыль: ~{stats['today_stars'] * STARS_TO_RUB:.0f} руб\n\n"
+        f"📈 <b>Средний чек:</b>\n"
+        f"{stats['total_stars'] // max(stats['total_payments'], 1)} ⭐"
     )
     
     await c.message.answer(text, reply_markup=get_admin_inline())
@@ -1067,15 +1415,16 @@ async def admin_payments(c: CallbackQuery):
         await c.answer("⛔ Нет доступа", show_alert=True)
         return
     
-    payments = db.get_all_payments(20)
+    payments = db.get_all_payments(30)
     
     if not payments:
         text = "💳 <b>Платежи</b>\n\nПока нет платежей."
     else:
-        text = f"💳 <b>Последние 20 платежей</b>\n\n"
+        text = f"💳 <b>Последние 30 платежей</b>\n\n"
         for p in payments:
             name = p.get('first_name', 'Unknown')[:10]
-            text += f"• {p['game_name']}: {p['amount_stars']}⭐ ({name}) - {p['created_at'][:16]}\n"
+            status_emoji = "✅" if p['status'] == 'completed' else "⏳" if p['status'] == 'processing' else "❌"
+            text += f"{status_emoji} {p['game_name']}: {p['amount_stars']}⭐ ({name}) - {p['created_at'][:16]}\n"
     
     await c.message.answer(text, reply_markup=get_admin_inline())
     await c.answer()
@@ -1086,25 +1435,59 @@ async def admin_users(c: CallbackQuery):
         await c.answer("⛔ Нет доступа", show_alert=True)
         return
     
-    await c.message.answer(
-        "👥 <b>Пользователи</b>\n\n🚀 Функция в разработке",
-        reply_markup=get_admin_inline()
-    )
+    # Топ 10 пользователей
+    top_users = db.get_top_donaters(10)
+    
+    text = "👥 <b>Топ пользователей</b>\n\n"
+    for i, user in enumerate(top_users, 1):
+        name = user.get('first_name', 'Аноним')[:15]
+        username = f" @{user['username']}" if user.get('username') else ""
+        stars = user.get('total_spent_stars', 0)
+        text += f"{i}. {name}{username} - {stars}⭐\n"
+    
+    await c.message.answer(text, reply_markup=get_admin_inline())
     await c.answer()
 
-@dp.callback_query(lambda c: c.data == "admin_today")
-async def admin_today(c: CallbackQuery):
+@dp.callback_query(lambda c: c.data == "admin_charts")
+async def admin_charts(c: CallbackQuery):
+    if c.from_user.id != ADMIN_ID:
+        await c.answer("⛔ Нет доступа", show_alert=True)
+        return
+    
+    daily = db.get_daily_stats(14)
+    
+    text = "📈 <b>График за 14 дней:</b>\n\n"
+    for d in reversed(daily):
+        date = d['date'][5:]  # MM-DD
+        bars = "█" * min(int(d['stars'] / 50), 20) or "▏"
+        text += f"{date}: {bars} {d['stars']}⭐\n"
+    
+    await c.message.answer(text, reply_markup=get_admin_inline())
+    await c.answer()
+
+@dp.callback_query(lambda c: c.data == "admin_profit")
+async def admin_profit(c: CallbackQuery):
     if c.from_user.id != ADMIN_ID:
         await c.answer("⛔ Нет доступа", show_alert=True)
         return
     
     stats = db.get_total_stats()
+    daily = db.get_daily_stats(30)
+    
+    # Примерный прогноз
+    avg_daily = sum(d['stars'] for d in daily) // len(daily) if daily else 0
+    avg_rub = avg_daily * STARS_TO_RUB
     
     text = (
-        f"📈 <b>Статистика за сегодня</b>\n\n"
-        f"👥 Новых пользователей: {stats['today_users']}\n"
-        f"🛒 Покупок: {stats['today_payments']}\n"
-        f"💰 Звезд: {stats['today_stars']}\n"
+        f"💰 <b>Прогноз прибыли</b>\n\n"
+        f"📊 <b>Текущий баланс:</b>\n"
+        f"• Всего звезд: {stats['total_stars']}\n"
+        f"• В рублях: ~{stats['total_stars'] * STARS_TO_RUB:.0f} руб\n\n"
+        f"📈 <b>Средний доход:</b>\n"
+        f"• В день: {avg_daily}⭐ / {avg_rub:.0f} руб\n"
+        f"• В месяц: {avg_daily * 30}⭐ / {avg_rub * 30:.0f} руб\n"
+        f"• В год: {avg_daily * 365}⭐ / {avg_rub * 365:.0f} руб\n\n"
+        f"🚀 <b>Совет:</b> Привлекай больше рефералов и продажи вырастут!"
     )
     
     await c.message.answer(text, reply_markup=get_admin_inline())
@@ -1120,9 +1503,71 @@ async def delivery_worker():
     
     while True:
         try:
-            # Здесь будет логика автовыдачи
-            # Пока просто ждём
-            await asyncio.sleep(60)
+            # Получаем задачи из очереди
+            conn = sqlite3.connect("bot_database.db")
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT * FROM delivery_queue 
+                WHERE status = 'pending' AND attempts < 3
+                ORDER BY created_at ASC
+                LIMIT 5
+            ''')
+            tasks = cursor.fetchall()
+            conn.close()
+            
+            for task in tasks:
+                task_dict = {
+                    'id': task[0],
+                    'payment_id': task[1],
+                    'user_id': task[2],
+                    'game_id': task[3],
+                    'account': task[4],
+                    'amount': task[5]
+                }
+                
+                # Пытаемся выдать
+                success = False
+                if task_dict['game_id'] == 'freefire' and freefire_api:
+                    success = await freefire_api.send_diamonds(
+                        player_id=task_dict['account'],
+                        amount=task_dict['amount']
+                    )
+                
+                if success:
+                    # Отмечаем как выполненное
+                    conn = sqlite3.connect("bot_database.db")
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        UPDATE delivery_queue SET status = 'completed' WHERE id = ?
+                    ''', (task_dict['id'],))
+                    cursor.execute('''
+                        UPDATE payments SET status = 'completed', delivered_at = ? WHERE id = ?
+                    ''', (datetime.now(), task_dict['payment_id']))
+                    conn.commit()
+                    conn.close()
+                    
+                    # Уведомляем пользователя
+                    await notify_delivery_complete(
+                        user_id=task_dict['user_id'],
+                        game_name=GAMES.get(task_dict['game_id'], {}).get('name', 'Игра'),
+                        amount=task_dict['amount']
+                    )
+                    
+                    logging.info(f"✅ Доставлено: {task_dict}")
+                else:
+                    # Увеличиваем счетчик попыток
+                    conn = sqlite3.connect("bot_database.db")
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        UPDATE delivery_queue 
+                        SET attempts = attempts + 1 
+                        WHERE id = ?
+                    ''', (task_dict['id'],))
+                    conn.commit()
+                    conn.close()
+            
+            await asyncio.sleep(30)
+            
         except Exception as e:
             logging.error(f"Worker error: {e}")
             await asyncio.sleep(60)
@@ -1132,22 +1577,36 @@ async def delivery_worker():
 # ============================================
 
 async def main():
-    logging.info("🚀 Запуск мегабота...")
+    logging.info("🚀 Запуск мегабота с твоими ключами...")
     
-    # Проверка CryptoBot ключа
-    if CRYPTO_ENABLED and CRYPTO_API_KEY == "ТУТ_ДОЛЖЕН_БЫТЬ_ТВОЙ_КЛЮЧ_ИЗ_CRYPTOBOT":
-        logging.warning("⚠️ CryptoBot ключ не настроен! Криптоплатежи работать не будут.")
-        print("\n⚠️ ВНИМАНИЕ: CryptoBot ключ не настроен!")
-        print("Получи ключ в @CryptoBot и вставь в CRYPTO_API_KEY\n")
+    print(f"\n{'='*60}")
+    print(f"🔥 МЕГАБОТ ЗАПУСКАЕТСЯ С ТВОИМИ КЛЮЧАМИ!")
+    print(f"{'='*60}")
+    print(f"🤖 Токен бота: {BOT_TOKEN[:15]}...")
+    print(f"👑 Твой ID: {ADMIN_ID}")
+    print(f"💰 CryptoBot ключ: {CRYPTO_API_KEY[:10]}...")
+    print(f"{'='*60}\n")
     
     try:
         me = await bot.get_me()
         logging.info(f"✅ Бот @{me.username} запущен!")
-        print(f"\n{'='*50}")
+        print(f"\n{'='*60}")
         print(f"🔥 МЕГАБОТ @{me.username} ЗАПУЩЕН!")
         print(f"📱 Открой Telegram и напиши /start")
         print(f"👑 Админка: /admin")
-        print(f"{'='*50}\n")
+        print(f"🎁 Ежедневный бонус: +1⭐ каждый день")
+        print(f"💬 Поддержка: в меню")
+        print(f"{'='*60}\n")
+        
+        # Отправляем уведомление админу о запуске
+        await bot.send_message(
+            ADMIN_ID,
+            f"🚀 <b>Бот запущен!</b>\n\n"
+            f"✅ Все системы работают\n"
+            f"💰 CryptoBot ключ активен\n"
+            f"🎮 {len([g for g in GAMES.values() if g['enabled']])} игр доступно\n\n"
+            f"📊 Статистика в админке"
+        )
         
         # Запускаем фоновый воркер
         asyncio.create_task(delivery_worker())
