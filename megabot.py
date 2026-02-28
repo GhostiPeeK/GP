@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-██████╗ ██████╗ ██████╗     ███╗   ███╗███████╗ ██████╗  █████╗ 
-██╔══██╗╚════██╗╚════██╗    ████╗ ████║██╔════╝██╔════╝ ██╔══██╗
-██████╔╝ █████╔╝ █████╔╝    ██╔████╔██║█████╗  ██║  ███╗███████║
-██╔═══╝  ╚═══██╗ ╚═══██╗    ██║╚██╔╝██║██╔══╝  ██║   ██║██╔══██║
-██║     ██████╔╝██████╔╝    ██║ ╚═╝ ██║███████╗╚██████╔╝██║  ██║
-╚═╝     ╚═════╝ ╚═════╝     ╚═╝     ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝
-                                                                 
-       ██████╗  █████╗ ███╗   ███╗██╗███╗   ██╗ ██████╗          
-      ██╔════╝ ██╔══██╗████╗ ████║██║████╗  ██║██╔════╝          
-      ██║  ███╗███████║██╔████╔██║██║██╔██╗ ██║██║  ███╗         
-      ██║   ██║██╔══██║██║╚██╔╝██║██║██║╚██╗██║██║   ██║         
-      ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║██║ ╚████║╚██████╔╝         
-       ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝          
-                                                                 
-              🎮 ИГРОВАЯ P2P БИРЖА + КРИПТО 💰               
+██████╗ ██████╗ ██████╗     ███████╗████████╗ █████╗ ██████╗ ██╗     ███████╗
+██╔══██╗╚════██╗╚════██╗    ██╔════╝╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝
+██████╔╝ █████╔╝ █████╔╝    ███████╗   ██║   ███████║██████╔╝██║     █████╗  
+██╔═══╝  ╚═══██╗ ╚═══██╗    ╚════██║   ██║   ██╔══██║██╔══██╗██║     ██╔══╝  
+██║     ██████╔╝██████╔╝    ███████║   ██║   ██║  ██║██████╔╝███████╗███████╗
+╚═╝     ╚═════╝ ╚═════╝     ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚══════╝╚══════╝
+
+              🎮 P2P ГЕЙМИНГ МАРКЕТПЛЕЙС + КРИПТО-БИРЖА 🎮
+                          СТАБИЛЬНАЯ ВЕРСИЯ
 """
 
 import os
@@ -29,15 +23,13 @@ import string
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
-from collections import defaultdict
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import (
-    Message, CallbackQuery, LabeledPrice,
-    PreCheckoutQuery, InlineKeyboardMarkup, 
-    InlineKeyboardButton, ReplyKeyboardMarkup,
-    KeyboardButton, FSInputFile
+    Message, CallbackQuery,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton
 )
 from aiogram.client.bot import DefaultBotProperties
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
@@ -51,455 +43,144 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"
 ADMIN_ID = 2091630272
-CRYPTO_API_KEY = "540261:AAzd4sQW2mo4I8UdxardSygAc3H3CSZbZBs"  # Для крипты
 
 # ============================================
 # НАСТРОЙКИ ПЛАТФОРМЫ
 # ============================================
 
-# Комиссия бота (%)
-COMMISSION = 1.0
-
-# Время на оплату (минут)
-ESCROW_TIME = 60
-
-# Минимальная сумма сделки (в рублях)
-MIN_DEAL_AMOUNT = 100
-MAX_DEAL_AMOUNT = 1000000
-
-# Реферальная система
-REFERRAL_BONUS = 10  # % от комиссии
-
-# Telegram Stars (оставим для совместимости)
-STARS_ENABLED = True
-STARS_TO_RUB = 1.79
+COMMISSION = 1.0  # Комиссия бота (%)
+ESCROW_TIME = 60  # Время на оплату (минут)
+MIN_DEAL_AMOUNT = 100  # Минимальная сумма (руб)
+REFERRAL_BONUS = 10  # Бонус рефереру (%)
 
 # ============================================
-# ИГРЫ И ИХ ВАЛЮТЫ (РАЗДЕЛ 1)
+# ИГРЫ
 # ============================================
 
 GAMES = {
-    'pubg': {
-        'name': 'PUBG Mobile',
-        'currency': 'UC',
-        'icon': '🪖',
-        'color': '🟡',
-        'min_amount': 60,
-        'max_amount': 50000,
-        'popular': True,
-        'category': 'shooter'
-    },
-    'brawl': {
-        'name': 'Brawl Stars',
-        'currency': 'гемы',
-        'icon': '🥊',
-        'color': '🔵',
-        'min_amount': 30,
-        'max_amount': 20000,
-        'popular': True,
-        'category': 'action'
-    },
-    'freefire': {
-        'name': 'Free Fire',
-        'currency': 'алмазы',
-        'icon': '🔥',
-        'color': '🔴',
-        'min_amount': 100,
-        'max_amount': 50000,
-        'popular': True,
-        'category': 'shooter'
-    },
-    'steam': {
-        'name': 'Steam',
-        'currency': 'руб',
-        'icon': '🎮',
-        'color': '⚫',
-        'min_amount': 50,
-        'max_amount': 15000,
-        'popular': True,
-        'category': 'platform'
-    },
-    'genshin': {
-        'name': 'Genshin Impact',
-        'currency': 'кристаллы',
-        'icon': '✨',
-        'color': '🟣',
-        'min_amount': 60,
-        'max_amount': 30000,
-        'popular': True,
-        'category': 'rpg'
-    },
-    'cod': {
-        'name': 'Call of Duty',
-        'currency': 'CP',
-        'icon': '🔫',
-        'color': '⚪',
-        'min_amount': 80,
-        'max_amount': 40000,
-        'popular': True,
-        'category': 'shooter'
-    },
-    'roblox': {
-        'name': 'Roblox',
-        'currency': 'Robux',
-        'icon': '🎲',
-        'color': '🟠',
-        'min_amount': 100,
-        'max_amount': 50000,
-        'popular': True,
-        'category': 'platform'
-    },
-    'fortnite': {
-        'name': 'Fortnite',
-        'currency': 'V-bucks',
-        'icon': '🛡️',
-        'color': '🟣',
-        'min_amount': 1000,
-        'max_amount': 50000,
-        'popular': True,
-        'category': 'shooter'
-    },
-    'standoff': {
-        'name': 'Standoff 2',
-        'currency': 'голда',
-        'icon': '🔫',
-        'color': '⚪',
-        'min_amount': 50,
-        'max_amount': 30000,
-        'popular': False,
-        'category': 'shooter'
-    },
-    'warface': {
-        'name': 'Warface',
-        'currency': 'кредиты',
-        'icon': '💣',
-        'color': '⚫',
-        'min_amount': 100,
-        'max_amount': 40000,
-        'popular': False,
-        'category': 'shooter'
-    }
+    'pubg': {'name': 'PUBG Mobile', 'currency': 'UC', 'icon': '🪖'},
+    'brawl': {'name': 'Brawl Stars', 'currency': 'гемы', 'icon': '🥊'},
+    'freefire': {'name': 'Free Fire', 'currency': 'алмазы', 'icon': '🔥'},
+    'steam': {'name': 'Steam', 'currency': 'руб', 'icon': '🎮'},
+    'genshin': {'name': 'Genshin Impact', 'currency': 'кристаллы', 'icon': '✨'},
+    'cod': {'name': 'Call of Duty', 'currency': 'CP', 'icon': '🔫'},
+    'roblox': {'name': 'Roblox', 'currency': 'Robux', 'icon': '🎲'},
+    'fortnite': {'name': 'Fortnite', 'currency': 'V-bucks', 'icon': '🛡️'}
 }
 
 # ============================================
-# КРИПТОВАЛЮТЫ (РАЗДЕЛ 2)
+# КРИПТОВАЛЮТЫ
 # ============================================
 
 CRYPTO_CURRENCIES = {
-    'USDT': {
-        'name': 'Tether USDT',
-        'icon': '💵',
-        'network': 'TRC20',
-        'min': 10,
-        'max': 10000,
-        'decimals': 2,
-        'popular': True
-    },
-    'TON': {
-        'name': 'Toncoin',
-        'icon': '💎',
-        'network': 'TON',
-        'min': 5,
-        'max': 5000,
-        'decimals': 2,
-        'popular': True
-    },
-    'BTC': {
-        'name': 'Bitcoin',
-        'icon': '₿',
-        'network': 'BTC',
-        'min': 0.001,
-        'max': 1,
-        'decimals': 6,
-        'popular': True
-    },
-    'ETH': {
-        'name': 'Ethereum',
-        'icon': '♦️',
-        'network': 'ERC20',
-        'min': 0.01,
-        'max': 50,
-        'decimals': 4,
-        'popular': False
-    }
-}
-
-# ============================================
-# ФИАТНЫЕ ВАЛЮТЫ
-# ============================================
-
-FIAT_CURRENCIES = {
-    'RUB': {
-        'name': 'Российский рубль',
-        'icon': '🇷🇺',
-        'symbol': '₽',
-        'min': 100,
-        'max': 1000000
-    },
-    'USD': {
-        'name': 'Доллар США',
-        'icon': '🇺🇸',
-        'symbol': '$',
-        'min': 10,
-        'max': 10000
-    },
-    'EUR': {
-        'name': 'Евро',
-        'icon': '🇪🇺',
-        'symbol': '€',
-        'min': 10,
-        'max': 10000
-    }
+    'USDT': {'name': 'Tether', 'icon': '💵', 'network': 'TRC20'},
+    'TON': {'name': 'Toncoin', 'icon': '💎', 'network': 'TON'},
+    'BTC': {'name': 'Bitcoin', 'icon': '₿', 'network': 'BTC'}
 }
 
 # ============================================
 # ПЛАТЁЖНЫЕ МЕТОДЫ
 # ============================================
 
-PAYMENT_METHODS = [
-    {'id': 'sbp', 'name': 'СБП', 'icon': '💳', 'fiat': ['RUB']},
-    {'id': 'card_rub', 'name': 'Карта РФ', 'icon': '💳', 'fiat': ['RUB']},
-    {'id': 'yoomoney', 'name': 'ЮMoney', 'icon': '💰', 'fiat': ['RUB']},
-    {'id': 'qiwi', 'name': 'Qiwi', 'icon': '📱', 'fiat': ['RUB']},
-    {'id': 'cash_rub', 'name': 'Наличные', 'icon': '💵', 'fiat': ['RUB']},
-    {'id': 'wise', 'name': 'Wise', 'icon': '🌍', 'fiat': ['USD', 'EUR']},
-    {'id': 'paypal', 'name': 'PayPal', 'icon': '💎', 'fiat': ['USD', 'EUR']},
-    {'id': 'cash_usd', 'name': 'Cash USD', 'icon': '💵', 'fiat': ['USD']},
-    {'id': 'crypto', 'name': 'Крипта', 'icon': '₿', 'fiat': ['USD', 'EUR']}
-]
+PAYMENT_METHODS = {
+    'sbp': {'name': 'СБП', 'icon': '💳'},
+    'card': {'name': 'Карта', 'icon': '💳'},
+    'yoomoney': {'name': 'ЮMoney', 'icon': '💰'},
+    'qiwi': {'name': 'Qiwi', 'icon': '📱'},
+    'cash': {'name': 'Наличные', 'icon': '💵'}
+}
 
 # ============================================
-# СОСТОЯНИЯ ДЛЯ FSM
+# СОСТОЯНИЯ FSM
 # ============================================
 
-class CreateGameOrder(StatesGroup):
-    choosing_game = State()
-    choosing_type = State()
-    entering_amount = State()
-    entering_price = State()
-    entering_comment = State()
-    choosing_payment = State()
-    confirm = State()
+class CreateOrder(StatesGroup):
+    choosing_market = State()  # game или crypto
+    choosing_item = State()     # игра или валюта
+    choosing_type = State()     # buy или sell
+    entering_amount = State()   # количество
+    entering_price = State()    # цена
+    entering_comment = State()  # комментарий
+    choosing_payment = State()  # способ оплаты
+    confirm = State()           # подтверждение
 
-class CreateCryptoOrder(StatesGroup):
-    choosing_currency = State()
-    choosing_fiat = State()
-    choosing_type = State()
-    entering_amount = State()
-    entering_price = State()
-    choosing_payment = State()
-    confirm = State()
-
-class TradeStates(StatesGroup):
+class TradeProcess(StatesGroup):
     waiting_payment = State()
     waiting_confirmation = State()
     waiting_review = State()
 
-class SupportStates(StatesGroup):
-    waiting_message = State()
-
 # ============================================
-# БАЗА ДАННЫХ (СУПЕР-МОЩНАЯ)
+# БАЗА ДАННЫХ (ПРОСТАЯ И РАБОЧАЯ)
 # ============================================
 
 class Database:
-    def __init__(self, db_name="p2p_megabot.db"):
+    def __init__(self, db_name="p2p_bot.db"):
         self.db_name = db_name
         self.init_db()
     
     def get_connection(self):
-        conn = sqlite3.connect(self.db_name)
-        conn.row_factory = sqlite3.Row
-        return conn
+        return sqlite3.connect(self.db_name)
     
     def init_db(self):
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # ========== ПОЛЬЗОВАТЕЛИ ==========
+        # Пользователи
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 first_name TEXT,
-                last_name TEXT,
                 registered_at TIMESTAMP,
                 referrer_id INTEGER DEFAULT NULL,
                 referral_code TEXT UNIQUE,
-                referral_balance REAL DEFAULT 0,
                 rating REAL DEFAULT 5.0,
-                deals_completed INTEGER DEFAULT 0,
-                deals_total INTEGER DEFAULT 0,
-                rating_count INTEGER DEFAULT 1,
-                balance_rub REAL DEFAULT 0,
-                
-                -- Балансы для крипты
-                usdt_balance REAL DEFAULT 0,
-                ton_balance REAL DEFAULT 0,
-                btc_balance REAL DEFAULT 0,
-                eth_balance REAL DEFAULT 0,
-                
-                -- Заблокированные средства (эскроу)
-                locked_usdt REAL DEFAULT 0,
-                locked_ton REAL DEFAULT 0,
-                locked_btc REAL DEFAULT 0,
-                locked_eth REAL DEFAULT 0,
-                
-                -- Статистика
-                is_verified BOOLEAN DEFAULT 0,
-                is_banned BOOLEAN DEFAULT 0,
-                last_activity TIMESTAMP,
-                settings TEXT DEFAULT '{}',
-                
-                -- Достижения
-                achievements TEXT DEFAULT '[]',
-                
-                FOREIGN KEY (referrer_id) REFERENCES users(user_id)
+                deals INTEGER DEFAULT 0,
+                balance REAL DEFAULT 0
             )
         ''')
         
-        # ========== ОРДЕРА (ИГРЫ) ==========
+        # Ордера
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS game_orders (
+            CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
-                game_id TEXT,
-                game_name TEXT,
-                game_currency TEXT,
-                type TEXT,
+                market_type TEXT,
+                item_id TEXT,
+                item_name TEXT,
+                order_type TEXT,
                 amount REAL,
-                price_per_unit REAL,
-                total_price REAL,
-                min_amount REAL DEFAULT 0,
+                price REAL,
+                total REAL,
                 comment TEXT,
                 payment_method TEXT,
                 status TEXT DEFAULT 'active',
-                created_at TIMESTAMP,
-                expires_at TIMESTAMP,
-                completed_at TIMESTAMP,
-                views INTEGER DEFAULT 0,
-                favorites INTEGER DEFAULT 0,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                created_at TIMESTAMP
             )
         ''')
         
-        # ========== ОРДЕРА (КРИПТА) ==========
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS crypto_orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                currency TEXT,
-                fiat_currency TEXT,
-                type TEXT,
-                amount REAL,
-                price_per_unit REAL,
-                total_fiat REAL,
-                min_amount REAL DEFAULT 0,
-                comment TEXT,
-                payment_method TEXT,
-                status TEXT DEFAULT 'active',
-                created_at TIMESTAMP,
-                expires_at TIMESTAMP,
-                completed_at TIMESTAMP,
-                views INTEGER DEFAULT 0,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
-        ''')
-        
-        # ========== СДЕЛКИ (ОБЩИЕ) ==========
+        # Сделки
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                order_type TEXT, -- 'game' или 'crypto'
                 order_id INTEGER,
                 seller_id INTEGER,
                 buyer_id INTEGER,
-                item_name TEXT,
                 amount REAL,
-                price_per_unit REAL,
-                total_price REAL,
+                total REAL,
                 commission REAL,
-                commission_taken BOOLEAN DEFAULT 0,
-                payment_method TEXT,
-                payment_details TEXT,
-                game_account TEXT,
                 status TEXT DEFAULT 'pending',
-                escrow_status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP,
-                expires_at TIMESTAMP,
-                completed_at TIMESTAMP,
-                dispute_reason TEXT,
-                dispute_resolved_by INTEGER,
-                seller_rating INTEGER DEFAULT 0,
-                buyer_rating INTEGER DEFAULT 0,
-                FOREIGN KEY (seller_id) REFERENCES users(user_id),
-                FOREIGN KEY (buyer_id) REFERENCES users(user_id)
-            )
-        ''')
-        
-        # ========== ОТЗЫВЫ ==========
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS reviews (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                trade_id INTEGER,
-                from_user_id INTEGER,
-                to_user_id INTEGER,
-                rating INTEGER CHECK(rating >= 1 AND rating <= 5),
-                comment TEXT,
-                created_at TIMESTAMP,
-                FOREIGN KEY (trade_id) REFERENCES trades(id)
-            )
-        ''')
-        
-        # ========== ИЗБРАННОЕ ==========
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS favorites (
-                user_id INTEGER,
-                order_type TEXT,
-                order_id INTEGER,
-                created_at TIMESTAMP,
-                PRIMARY KEY (user_id, order_type, order_id),
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
-        ''')
-        
-        # ========== УВЕДОМЛЕНИЯ ==========
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS notifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                type TEXT,
-                title TEXT,
-                message TEXT,
-                data TEXT,
-                is_read BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
-        ''')
-        
-        # ========== СТАТИСТИКА ==========
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATE UNIQUE,
-                new_users INTEGER DEFAULT 0,
-                new_game_orders INTEGER DEFAULT 0,
-                new_crypto_orders INTEGER DEFAULT 0,
-                completed_trades INTEGER DEFAULT 0,
-                total_volume_game REAL DEFAULT 0,
-                total_volume_crypto REAL DEFAULT 0,
-                commission_earned REAL DEFAULT 0
+                expires_at TIMESTAMP
             )
         ''')
         
         conn.commit()
         conn.close()
-        logging.info("✅ MEGA P2P База данных готова")
     
     # ========== ПОЛЬЗОВАТЕЛИ ==========
     
-    def add_user(self, user_id, username, first_name, last_name, referrer_code=None):
+    def add_user(self, user_id, username, first_name, referrer_code=None):
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -510,1107 +191,399 @@ class Database:
             cursor.execute('SELECT user_id FROM users WHERE referral_code = ?', (referrer_code,))
             res = cursor.fetchone()
             if res:
-                referrer_id = res['user_id']
+                referrer_id = res[0]
         
         cursor.execute('''
             INSERT OR REPLACE INTO users 
-            (user_id, username, first_name, last_name, registered_at, referrer_id, referral_code, last_activity)
-            VALUES (?, ?, ?, ?, COALESCE(
-                (SELECT registered_at FROM users WHERE user_id = ?), ?
-            ), ?, ?, ?)
-        ''', (
-            user_id, username, first_name, last_name,
-            user_id, datetime.now(),
-            referrer_id, ref_code,
-            datetime.now()
-        ))
-        
-        # Обновляем статистику
-        today = datetime.now().date()
-        cursor.execute('''
-            INSERT INTO stats (date, new_users) VALUES (?, 1)
-            ON CONFLICT(date) DO UPDATE SET new_users = new_users + 1
-        ''', (today,))
+            (user_id, username, first_name, registered_at, referrer_id, referral_code)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, username, first_name, datetime.now(), referrer_id, ref_code))
         
         conn.commit()
         conn.close()
-        
-        if referrer_id:
-            asyncio.create_task(notify_referrer(referrer_id, user_id))
-        
         return ref_code
     
     def get_user(self, user_id):
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-        res = cursor.fetchone()
+        row = cursor.fetchone()
         conn.close()
-        return dict(res) if res else None
-    
-    def update_user_activity(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET last_activity = ? WHERE user_id = ?', (datetime.now(), user_id))
-        conn.commit()
-        conn.close()
-    
-    def get_user_rating(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT rating, rating_count, deals_completed FROM users WHERE user_id = ?', (user_id,))
-        res = cursor.fetchone()
-        conn.close()
-        return dict(res) if res else {'rating': 5.0, 'rating_count': 1, 'deals_completed': 0}
-    
-    # ========== БАЛАНСЫ ==========
-    
-    def get_balance(self, user_id, currency):
-        conn = self.get_connection()
-        cursor = conn.cursor()
         
-        currency = currency.lower()
-        cursor.execute(f'SELECT {currency}_balance FROM users WHERE user_id = ?', (user_id,))
-        res = cursor.fetchone()
-        conn.close()
-        return res[0] if res else 0
+        if row:
+            return {
+                'user_id': row[0],
+                'username': row[1],
+                'first_name': row[2],
+                'registered_at': row[3],
+                'referrer_id': row[4],
+                'referral_code': row[5],
+                'rating': row[6],
+                'deals': row[7],
+                'balance': row[8]
+            }
+        return None
     
-    def update_balance(self, user_id, currency, amount, operation='add', lock=False):
+    # ========== ОРДЕРА ==========
+    
+    def create_order(self, user_id, market_type, item_id, item_name, order_type, 
+                    amount, price, comment, payment_method):
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        currency = currency.lower()
-        
-        if lock:
-            cursor.execute(f'''
-                UPDATE users 
-                SET locked_{currency} = locked_{currency} + ?,
-                    {currency}_balance = {currency}_balance - ?
-                WHERE user_id = ? AND {currency}_balance >= ?
-            ''', (amount, amount, user_id, amount))
-        else:
-            if operation == 'add':
-                cursor.execute(f'''
-                    UPDATE users 
-                    SET {currency}_balance = {currency}_balance + ?
-                    WHERE user_id = ?
-                ''', (amount, user_id))
-            elif operation == 'subtract':
-                cursor.execute(f'''
-                    UPDATE users 
-                    SET {currency}_balance = {currency}_balance - ?
-                    WHERE user_id = ? AND {currency}_balance >= ?
-                ''', (amount, user_id, amount))
-            elif operation == 'unlock':
-                cursor.execute(f'''
-                    UPDATE users 
-                    SET locked_{currency} = locked_{currency} - ?,
-                        {currency}_balance = {currency}_balance + ?
-                    WHERE user_id = ?
-                ''', (amount, amount, user_id))
-        
-        conn.commit()
-        conn.close()
-    
-    # ========== ИГРОВЫЕ ОРДЕРА ==========
-    
-    def create_game_order(self, user_id, game_id, order_type, amount, price, payment_method, comment=""):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        game = GAMES[game_id]
-        total_price = amount * price
-        
-        min_amount = MIN_DEAL_AMOUNT / price
+        total = amount * price
         
         cursor.execute('''
-            INSERT INTO game_orders 
-            (user_id, game_id, game_name, game_currency, type, amount, price_per_unit, total_price, 
-             min_amount, comment, payment_method, created_at, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            user_id, game_id, game['name'], game['currency'], order_type, amount, price, total_price,
-            min_amount, comment, payment_method, datetime.now(),
-            datetime.now() + timedelta(hours=24)
-        ))
-        
-        order_id = cursor.lastrowid
-        
-        today = datetime.now().date()
-        cursor.execute('''
-            INSERT INTO stats (date, new_game_orders) VALUES (?, 1)
-            ON CONFLICT(date) DO UPDATE SET new_game_orders = new_game_orders + 1
-        ''', (today,))
-        
-        conn.commit()
-        conn.close()
-        
-        return order_id
-    
-    def get_game_orders(self, game_id=None, order_type=None, limit=20):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        query = '''
-            SELECT o.*, u.username, u.first_name, u.rating, u.deals_completed, u.is_verified 
-            FROM game_orders o 
-            JOIN users u ON o.user_id = u.user_id 
-            WHERE o.status = 'active'
-        '''
-        params = []
-        
-        if game_id:
-            query += ' AND o.game_id = ?'
-            params.append(game_id)
-        
-        if order_type:
-            query += ' AND o.type = ?'
-            params.append(order_type)
-        
-        query += ' ORDER BY o.created_at DESC LIMIT ?'
-        params.append(limit)
-        
-        cursor.execute(query, params)
-        res = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return res
-    
-    def get_game_order(self, order_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT o.*, u.username, u.first_name, u.rating, u.deals_completed, u.is_verified 
-            FROM game_orders o 
-            JOIN users u ON o.user_id = u.user_id 
-            WHERE o.id = ?
-        ''', (order_id,))
-        
-        res = cursor.fetchone()
-        
-        if res:
-            cursor.execute('UPDATE game_orders SET views = views + 1 WHERE id = ?', (order_id,))
-            conn.commit()
-        
-        conn.close()
-        return dict(res) if res else None
-    
-    # ========== КРИПТО-ОРДЕРА ==========
-    
-    def create_crypto_order(self, user_id, currency, fiat_currency, order_type, amount, price, payment_method, comment=""):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        total_fiat = amount * price
-        
-        cursor.execute('''
-            INSERT INTO crypto_orders 
-            (user_id, currency, fiat_currency, type, amount, price_per_unit, total_fiat, 
-             comment, payment_method, created_at, expires_at)
+            INSERT INTO orders 
+            (user_id, market_type, item_id, item_name, order_type, amount, price, total, comment, payment_method, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            user_id, currency, fiat_currency, order_type, amount, price, total_fiat,
-            comment, payment_method, datetime.now(),
-            datetime.now() + timedelta(hours=24)
-        ))
+        ''', (user_id, market_type, item_id, item_name, order_type, amount, price, total, 
+              comment, payment_method, datetime.now()))
         
         order_id = cursor.lastrowid
-        
-        today = datetime.now().date()
-        cursor.execute('''
-            INSERT INTO stats (date, new_crypto_orders) VALUES (?, 1)
-            ON CONFLICT(date) DO UPDATE SET new_crypto_orders = new_crypto_orders + 1
-        ''', (today,))
-        
         conn.commit()
         conn.close()
-        
         return order_id
     
-    def get_crypto_orders(self, currency=None, fiat_currency=None, order_type=None, limit=20):
+    def get_active_orders(self, market_type=None, item_id=None, limit=20):
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        query = '''
-            SELECT o.*, u.username, u.first_name, u.rating, u.deals_completed, u.is_verified 
-            FROM crypto_orders o 
-            JOIN users u ON o.user_id = u.user_id 
-            WHERE o.status = 'active'
-        '''
+        query = 'SELECT * FROM orders WHERE status = "active"'
         params = []
         
-        if currency:
-            query += ' AND o.currency = ?'
-            params.append(currency)
+        if market_type:
+            query += ' AND market_type = ?'
+            params.append(market_type)
         
-        if fiat_currency:
-            query += ' AND o.fiat_currency = ?'
-            params.append(fiat_currency)
+        if item_id:
+            query += ' AND item_id = ?'
+            params.append(item_id)
         
-        if order_type:
-            query += ' AND o.type = ?'
-            params.append(order_type)
-        
-        query += ' ORDER BY o.created_at DESC LIMIT ?'
+        query += ' ORDER BY created_at DESC LIMIT ?'
         params.append(limit)
         
         cursor.execute(query, params)
-        res = [dict(r) for r in cursor.fetchall()]
+        rows = cursor.fetchall()
         conn.close()
-        return res
+        
+        orders = []
+        for row in rows:
+            orders.append({
+                'id': row[0],
+                'user_id': row[1],
+                'market_type': row[2],
+                'item_id': row[3],
+                'item_name': row[4],
+                'order_type': row[5],
+                'amount': row[6],
+                'price': row[7],
+                'total': row[8],
+                'comment': row[9],
+                'payment_method': row[10],
+                'status': row[11],
+                'created_at': row[12]
+            })
+        return orders
     
-    def get_crypto_order(self, order_id):
+    def get_order(self, order_id):
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT o.*, u.username, u.first_name, u.rating, u.deals_completed, u.is_verified 
-            FROM crypto_orders o 
-            JOIN users u ON o.user_id = u.user_id 
-            WHERE o.id = ?
-        ''', (order_id,))
-        
-        res = cursor.fetchone()
-        
-        if res:
-            cursor.execute('UPDATE crypto_orders SET views = views + 1 WHERE id = ?', (order_id,))
-            conn.commit()
-        
+        cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
+        row = cursor.fetchone()
         conn.close()
-        return dict(res) if res else None
+        
+        if row:
+            return {
+                'id': row[0],
+                'user_id': row[1],
+                'market_type': row[2],
+                'item_id': row[3],
+                'item_name': row[4],
+                'order_type': row[5],
+                'amount': row[6],
+                'price': row[7],
+                'total': row[8],
+                'comment': row[9],
+                'payment_method': row[10],
+                'status': row[11],
+                'created_at': row[12]
+            }
+        return None
+    
+    def close_order(self, order_id):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE orders SET status = "completed" WHERE id = ?', (order_id,))
+        conn.commit()
+        conn.close()
     
     # ========== СДЕЛКИ ==========
     
-    def create_trade(self, order_type, order_id, buyer_id, amount):
+    def create_trade(self, order_id, buyer_id, amount):
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        if order_type == 'game':
-            cursor.execute('SELECT * FROM game_orders WHERE id = ? AND status = "active"', (order_id,))
-            order = cursor.fetchone()
-            if not order:
-                conn.close()
-                return None
-            
-            order = dict(order)
-            
-            if amount < order['min_amount'] or amount > order['amount']:
-                conn.close()
-                return None
-            
-            total_price = amount * order['price_per_unit']
-            commission = total_price * (COMMISSION / 100)
-            
-            cursor.execute('''
-                INSERT INTO trades 
-                (order_type, order_id, seller_id, buyer_id, item_name, amount, price_per_unit, total_price, 
-                 commission, payment_method, created_at, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                'game', order_id, order['user_id'], buyer_id, 
-                f"{order['game_name']} {order['game_currency']}",
-                amount, order['price_per_unit'], total_price, commission,
-                order['payment_method'], datetime.now(),
-                datetime.now() + timedelta(minutes=ESCROW_TIME)
-            ))
-            
-            new_amount = order['amount'] - amount
-            if new_amount <= 0:
-                cursor.execute('UPDATE game_orders SET status = "completed", completed_at = ? WHERE id = ?', 
-                              (datetime.now(), order_id))
-            else:
-                cursor.execute('UPDATE game_orders SET amount = ? WHERE id = ?', (new_amount, order_id))
+        order = self.get_order(order_id)
+        if not order:
+            conn.close()
+            return None
         
-        else:  # crypto
-            cursor.execute('SELECT * FROM crypto_orders WHERE id = ? AND status = "active"', (order_id,))
-            order = cursor.fetchone()
-            if not order:
-                conn.close()
-                return None
-            
-            order = dict(order)
-            
-            if amount < order['min_amount'] or amount > order['amount']:
-                conn.close()
-                return None
-            
-            total_fiat = amount * order['price_per_unit']
-            commission = total_fiat * (COMMISSION / 100)
-            
-            cursor.execute('''
-                INSERT INTO trades 
-                (order_type, order_id, seller_id, buyer_id, item_name, amount, price_per_unit, total_price, 
-                 commission, payment_method, created_at, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                'crypto', order_id, order['user_id'], buyer_id,
-                f"{order['currency']} ({order['fiat_currency']})",
-                amount, order['price_per_unit'], total_fiat, commission,
-                order['payment_method'], datetime.now(),
-                datetime.now() + timedelta(minutes=ESCROW_TIME)
-            ))
-            
-            new_amount = order['amount'] - amount
-            if new_amount <= 0:
-                cursor.execute('UPDATE crypto_orders SET status = "completed", completed_at = ? WHERE id = ?', 
-                              (datetime.now(), order_id))
-            else:
-                cursor.execute('UPDATE crypto_orders SET amount = ? WHERE id = ?', (new_amount, order_id))
+        total = amount * order['price']
+        commission = total * (COMMISSION / 100)
+        
+        cursor.execute('''
+            INSERT INTO trades 
+            (order_id, seller_id, buyer_id, amount, total, commission, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (order_id, order['user_id'], buyer_id, amount, total, commission, 
+              datetime.now(), datetime.now() + timedelta(minutes=ESCROW_TIME)))
         
         trade_id = cursor.lastrowid
         
-        # Обновляем статистику пользователей
-        cursor.execute('''
-            UPDATE users SET deals_total = deals_total + 1
-            WHERE user_id IN (?, ?)
-        ''', (order['user_id'], buyer_id))
+        # Обновляем ордер
+        new_amount = order['amount'] - amount
+        if new_amount <= 0:
+            cursor.execute('UPDATE orders SET status = "completed" WHERE id = ?', (order_id,))
+        else:
+            cursor.execute('UPDATE orders SET amount = ? WHERE id = ?', (new_amount, order_id))
         
         conn.commit()
         conn.close()
-        
         return trade_id
     
     def get_trade(self, trade_id):
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT t.*, 
-                   s.username as seller_username, s.first_name as seller_name,
-                   b.username as buyer_username, b.first_name as buyer_name
-            FROM trades t
-            JOIN users s ON t.seller_id = s.user_id
-            JOIN users b ON t.buyer_id = b.user_id
-            WHERE t.id = ?
-        ''', (trade_id,))
-        
-        res = cursor.fetchone()
+        cursor.execute('SELECT * FROM trades WHERE id = ?', (trade_id,))
+        row = cursor.fetchone()
         conn.close()
-        return dict(res) if res else None
+        
+        if row:
+            return {
+                'id': row[0],
+                'order_id': row[1],
+                'seller_id': row[2],
+                'buyer_id': row[3],
+                'amount': row[4],
+                'total': row[5],
+                'commission': row[6],
+                'status': row[7],
+                'created_at': row[8],
+                'expires_at': row[9]
+            }
+        return None
     
-    def get_user_trades(self, user_id, limit=10):
+    def complete_trade(self, trade_id):
         conn = self.get_connection()
         cursor = conn.cursor()
+        cursor.execute('UPDATE trades SET status = "completed" WHERE id = ?', (trade_id,))
         
+        # Начисляем комиссию админу
+        trade = self.get_trade(trade_id)
+        if trade:
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', 
+                          (trade['commission'], ADMIN_ID))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_user_trades(self, user_id):
+        conn = self.get_connection()
+        cursor = conn.cursor()
         cursor.execute('''
             SELECT * FROM trades 
             WHERE seller_id = ? OR buyer_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-        ''', (user_id, user_id, limit))
-        
-        res = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return res
-    
-    def lock_funds_for_trade(self, trade_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM trades WHERE id = ?', (trade_id,))
-        trade = cursor.fetchone()
-        
-        if not trade:
-            conn.close()
-            return False
-        
-        trade = dict(trade)
-        
-        if trade['order_type'] == 'crypto':
-            currency = trade['item_name'].split()[0].lower()
-            cursor.execute(f'''
-                UPDATE users 
-                SET locked_{currency} = locked_{currency} + ?,
-                    {currency}_balance = {currency}_balance - ?
-                WHERE user_id = ? AND {currency}_balance >= ?
-            ''', (trade['amount'], trade['amount'], trade['seller_id'], trade['amount']))
-            
-            if cursor.rowcount == 0:
-                conn.close()
-                return False
-        
-        cursor.execute('UPDATE trades SET escrow_status = "locked" WHERE id = ?', (trade_id,))
-        
-        conn.commit()
-        conn.close()
-        return True
-    
-    def release_funds_to_buyer(self, trade_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM trades WHERE id = ?', (trade_id,))
-        trade = cursor.fetchone()
-        
-        if not trade:
-            conn.close()
-            return False
-        
-        trade = dict(trade)
-        
-        if trade['order_type'] == 'crypto':
-            currency = trade['item_name'].split()[0].lower()
-            
-            cursor.execute(f'''
-                UPDATE users 
-                SET locked_{currency} = locked_{currency} - ?,
-                    {currency}_balance = {currency}_balance + ?
-                WHERE user_id = ?
-            ''', (trade['amount'], trade['amount'], trade['buyer_id']))
-        
-        if not trade['commission_taken']:
-            cursor.execute('''
-                UPDATE users 
-                SET balance_rub = balance_rub + ?
-                WHERE user_id = ?
-            ''', (trade['commission'], ADMIN_ID))
-            
-            cursor.execute('UPDATE trades SET commission_taken = 1 WHERE id = ?', (trade_id,))
-        
-        cursor.execute('''
-            UPDATE trades 
-            SET status = 'completed', 
-                escrow_status = 'released', 
-                completed_at = ? 
-            WHERE id = ?
-        ''', (datetime.now(), trade_id))
-        
-        cursor.execute('''
-            UPDATE users 
-            SET deals_completed = deals_completed + 1
-            WHERE user_id = ?
-        ''', (trade['seller_id'],))
-        
-        conn.commit()
-        conn.close()
-        return True
-    
-    # ========== ОТЗЫВЫ ==========
-    
-    def add_review(self, trade_id, from_user_id, to_user_id, rating, comment):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO reviews (trade_id, from_user_id, to_user_id, rating, comment, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (trade_id, from_user_id, to_user_id, rating, comment, datetime.now()))
-        
-        cursor.execute('''
-            SELECT AVG(rating) as avg_rating, COUNT(*) as count
-            FROM reviews 
-            WHERE to_user_id = ?
-        ''', (to_user_id,))
-        
-        stats = cursor.fetchone()
-        
-        cursor.execute('''
-            UPDATE users 
-            SET rating = ?, rating_count = ?
-            WHERE user_id = ?
-        ''', (stats['avg_rating'] or 5.0, stats['count'] or 1, to_user_id))
-        
-        conn.commit()
-        conn.close()
-    
-    # ========== ИЗБРАННОЕ ==========
-    
-    def add_favorite(self, user_id, order_type, order_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT OR IGNORE INTO favorites (user_id, order_type, order_id, created_at)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, order_type, order_id, datetime.now()))
-        
-        conn.commit()
-        conn.close()
-    
-    def remove_favorite(self, user_id, order_type, order_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            DELETE FROM favorites 
-            WHERE user_id = ? AND order_type = ? AND order_id = ?
-        ''', (user_id, order_type, order_id))
-        
-        conn.commit()
-        conn.close()
-    
-    def get_favorites(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM favorites WHERE user_id = ?', (user_id,))
-        res = cursor.fetchall()
-        conn.close()
-        return [dict(r) for r in res]
-    
-    # ========== УВЕДОМЛЕНИЯ ==========
-    
-    def add_notification(self, user_id, type, title, message, data=None):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO notifications (user_id, type, title, message, data, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, type, title, message, json.dumps(data) if data else None, datetime.now()))
-        
-        notification_id = cursor.lastrowid
-        conn.commit()
+            ORDER BY created_at DESC LIMIT 10
+        ''', (user_id, user_id))
+        rows = cursor.fetchall()
         conn.close()
         
-        asyncio.create_task(send_notification(user_id, title, message))
-        
-        return notification_id
-    
-    def get_unread_notifications(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT * FROM notifications 
-            WHERE user_id = ? AND is_read = 0
-            ORDER BY created_at DESC
-        ''', (user_id,))
-        
-        res = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return res
-    
-    def mark_notification_read(self, notification_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE notifications SET is_read = 1 WHERE id = ?', (notification_id,))
-        conn.commit()
-        conn.close()
-    
-    # ========== СТАТИСТИКА ==========
-    
-    def get_stats(self, days=7):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        result = []
-        for i in range(days):
-            date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
-            cursor.execute('SELECT * FROM stats WHERE date = ?', (date,))
-            row = cursor.fetchone()
-            if row:
-                result.append(dict(row))
-            else:
-                result.append({
-                    'date': date,
-                    'new_users': 0,
-                    'new_game_orders': 0,
-                    'new_crypto_orders': 0,
-                    'completed_trades': 0,
-                    'total_volume_game': 0,
-                    'total_volume_crypto': 0,
-                    'commission_earned': 0
-                })
-        
-        conn.close()
-        return result
+        trades = []
+        for row in rows:
+            trades.append({
+                'id': row[0],
+                'order_id': row[1],
+                'seller_id': row[2],
+                'buyer_id': row[3],
+                'amount': row[4],
+                'total': row[5],
+                'commission': row[6],
+                'status': row[7],
+                'created_at': row[8],
+                'expires_at': row[9]
+            })
+        return trades
 
 db = Database()
 
 # ============================================
-# УВЕДОМЛЕНИЯ
+# КЛАВИАТУРЫ (ПРОСТЫЕ И ПОНЯТНЫЕ)
 # ============================================
 
-async def send_notification(user_id, title, message):
-    try:
-        keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="📨 Посмотреть", callback_data="notifications")
-        keyboard.button(text="🔕 Не беспокоить", callback_data="notifications_off")
-        keyboard.adjust(2)
-        
-        await bot.send_message(
-            user_id,
-            f"🔔 <b>{title}</b>\n\n{message}",
-            reply_markup=keyboard.as_markup()
-        )
-    except:
-        pass
-
-async def notify_admin(text):
-    try:
-        await bot.send_message(ADMIN_ID, f"👑 <b>Админ:</b>\n\n{text}")
-    except:
-        pass
-
-async def notify_referrer(referrer_id, referral_id):
-    try:
-        text = (
-            f"👥 <b>Новый реферал!</b>\n\n"
-            f"По вашей ссылке зарегистрировался новый пользователь!\n"
-            f"После его первой сделки вы получите бонус {REFERRAL_BONUS}% от комиссии."
-        )
-        await bot.send_message(referrer_id, text)
-    except:
-        pass
-
-# ============================================
-# КЛАВИАТУРЫ (БОМБИЧЕСКИЙ ДИЗАЙН)
-# ============================================
-
-def get_main_menu():
-    """Главное меню (шедевр)"""
+def main_keyboard():
     builder = ReplyKeyboardBuilder()
-    
     buttons = [
-        KeyboardButton(text="🎮 ИГРОВАЯ БИРЖА"),
-        KeyboardButton(text="💰 КРИПТО-БИРЖА"),
-        KeyboardButton(text="📊 МОЙ ПРОФИЛЬ"),
-        KeyboardButton(text="👥 РЕФЕРАЛЫ"),
-        KeyboardButton(text="⭐ ИЗБРАННОЕ"),
-        KeyboardButton(text="📞 ПОМОЩЬ")
+        KeyboardButton(text="🎮 Игры"),
+        KeyboardButton(text="💰 Крипта"),
+        KeyboardButton(text="👤 Профиль"),
+        KeyboardButton(text="📞 Помощь")
     ]
-    
     builder.add(*buttons)
-    builder.adjust(2, 2, 2)
-    
+    builder.adjust(2, 2)
     return builder.as_markup(resize_keyboard=True)
 
-def get_game_menu():
-    """Меню игровой биржи"""
+def games_keyboard():
     builder = InlineKeyboardBuilder()
-    
-    # Популярные игры (первые 4)
-    popular = [(k, v) for k, v in GAMES.items() if v['popular']][:4]
-    for game_id, game in popular:
-        builder.button(
-            text=f"{game['icon']} {game['name']}",
-            callback_data=f"game_{game_id}"
-        )
-    
+    for game_id, game in GAMES.items():
+        builder.button(text=f"{game['icon']} {game['name']}", callback_data=f"game_{game_id}")
     builder.adjust(2)
-    
-    # Кнопки действий
-    builder.row(
-        InlineKeyboardButton(text="📋 Все игры", callback_data="games_all"),
-        InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_game_order"),
-        width=2
-    )
-    
-    builder.row(
-        InlineKeyboardButton(text="📊 Мои ордера", callback_data="my_game_orders"),
-        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"),
-        width=2
-    )
-    
+    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_game_order"))
+    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu"))
     return builder.as_markup()
 
-def get_crypto_menu():
-    """Меню крипто-биржи"""
+def crypto_keyboard():
     builder = InlineKeyboardBuilder()
-    
-    # Популярные криптовалюты
-    popular = [(k, v) for k, v in CRYPTO_CURRENCIES.items() if v['popular']]
-    for curr_id, curr in popular:
-        builder.button(
-            text=f"{curr['icon']} {curr_id} ({curr['network']})",
-            callback_data=f"crypto_{curr_id}"
-        )
-    
+    for curr_id, curr in CRYPTO_CURRENCIES.items():
+        builder.button(text=f"{curr['icon']} {curr_id}", callback_data=f"crypto_{curr_id}")
     builder.adjust(2)
-    
-    # Кнопки действий
-    builder.row(
-        InlineKeyboardButton(text="📋 Все валюты", callback_data="crypto_all"),
-        InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_crypto_order"),
-        width=2
-    )
-    
-    builder.row(
-        InlineKeyboardButton(text="📊 Мои ордера", callback_data="my_crypto_orders"),
-        InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"),
-        width=2
-    )
-    
+    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data="create_crypto_order"))
+    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu"))
     return builder.as_markup()
 
-def get_order_type_keyboard():
-    """Выбор типа ордера (покупка/продажа)"""
+def order_type_keyboard():
     builder = InlineKeyboardBuilder()
-    
-    builder.button(text="📈 КУПИТЬ", callback_data="order_type_buy")
-    builder.button(text="📉 ПРОДАТЬ", callback_data="order_type_sell")
-    builder.adjust(2)
-    
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
-    
-    return builder.as_markup()
-
-def get_payment_methods_keyboard(fiat_currency='RUB'):
-    """Выбор платёжного метода"""
-    builder = InlineKeyboardBuilder()
-    
-    for method in PAYMENT_METHODS:
-        if fiat_currency in method['fiat']:
-            builder.button(
-                text=f"{method['icon']} {method['name']}",
-                callback_data=f"payment_{method['id']}"
-            )
-    
+    builder.button(text="📈 Купить", callback_data="type_buy")
+    builder.button(text="📉 Продать", callback_data="type_sell")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
-    
     return builder.as_markup()
 
-def get_fiat_keyboard():
-    """Выбор фиатной валюты"""
+def payment_keyboard():
     builder = InlineKeyboardBuilder()
-    
-    for code, fiat in FIAT_CURRENCIES.items():
-        builder.button(
-            text=f"{fiat['icon']} {code} ({fiat['symbol']})",
-            callback_data=f"fiat_{code}"
-        )
-    
+    for pid, pm in PAYMENT_METHODS.items():
+        builder.button(text=f"{pm['icon']} {pm['name']}", callback_data=f"payment_{pid}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
-    
     return builder.as_markup()
 
-def get_profile_keyboard(user_id):
-    """Профиль пользователя"""
+def back_keyboard():
     builder = InlineKeyboardBuilder()
-    
-    user = db.get_user(user_id)
-    if user:
-        buttons = [
-            InlineKeyboardButton(text="📊 Мои сделки", callback_data="my_trades"),
-            InlineKeyboardButton(text="💰 Баланс", callback_data="my_balance"),
-            InlineKeyboardButton(text="⭐ Мой рейтинг", callback_data="my_rating"),
-            InlineKeyboardButton(text="⚙️ Настройки", callback_data="settings"),
-            InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
-        ]
-        
-        for btn in buttons:
-            builder.row(btn)
-    
+    builder.button(text="🔙 Назад", callback_data="back")
+    builder.button(text="🏠 Главное меню", callback_data="main_menu")
+    builder.adjust(2)
     return builder.as_markup()
 
-def get_trade_keyboard(trade_id, user_role):
-    """Клавиатура для сделки"""
+def profile_keyboard():
     builder = InlineKeyboardBuilder()
-    
-    if user_role == 'buyer':
-        builder.button(text="💳 Я оплатил", callback_data=f"trade_paid_{trade_id}")
-    elif user_role == 'seller':
-        builder.button(text="✅ Подтвердить получение", callback_data=f"trade_confirm_{trade_id}")
-    
-    builder.button(text="⚠️ Открыть спор", callback_data=f"trade_dispute_{trade_id}")
-    builder.button(text="🔄 Обновить", callback_data=f"trade_refresh_{trade_id}")
-    builder.adjust(1)
-    
-    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main"))
-    
+    builder.button(text="📊 Мои сделки", callback_data="my_trades")
+    builder.button(text="💰 Баланс", callback_data="balance")
+    builder.button(text="🏠 Главное меню", callback_data="main_menu")
+    builder.adjust(2, 1)
     return builder.as_markup()
-
-def get_order_card(order, order_type):
-    """Создаёт красивую карточку ордера"""
-    if order_type == 'game':
-        game = GAMES.get(order['game_id'], {})
-        icon = game.get('icon', '🎮')
-        
-        card = (
-            f"{icon} <b>{order['game_name']}</b>\n"
-            f"└ {'📈 ПРОДАЖА' if order['type'] == 'sell' else '📉 ПОКУПКА'}\n\n"
-            
-            f"💰 <b>Количество:</b> {order['amount']:.0f} {order['game_currency']}\n"
-            f"💵 <b>Цена:</b> {order['price_per_unit']:.2f} ₽ за единицу\n"
-            f"💎 <b>Общая сумма:</b> {order['total_price']:.0f} ₽\n"
-            f"📦 <b>Мин. сделка:</b> {order['min_amount']:.0f} {order['game_currency']}\n\n"
-            
-            f"👤 <b>Продавец:</b> {order.get('first_name', 'User')}"
-        )
-        
-        if order.get('is_verified'):
-            card += " ✅"
-        
-        card += f"\n⭐ <b>Рейтинг:</b> {order.get('rating', 5.0):.1f} ({order.get('deals_completed', 0)} сделок)"
-        
-        if order.get('comment'):
-            card += f"\n📝 <b>Комментарий:</b> {order['comment']}"
-        
-        card += f"\n🕐 <b>Создан:</b> {order['created_at'][:16]}"
-        
-    else:  # crypto
-        currency = CRYPTO_CURRENCIES.get(order['currency'], {})
-        fiat = FIAT_CURRENCIES.get(order['fiat_currency'], {})
-        
-        card = (
-            f"{currency.get('icon', '💰')} <b>{order['currency']}</b>\n"
-            f"└ {'📈 ПРОДАЖА' if order['type'] == 'sell' else '📉 ПОКУПКА'}\n\n"
-            
-            f"💰 <b>Количество:</b> {order['amount']:.2f} {order['currency']}\n"
-            f"💵 <b>Цена:</b> {order['price_per_unit']:.2f} {fiat.get('symbol', '₽')}\n"
-            f"💎 <b>Общая сумма:</b> {order['total_fiat']:.0f} {fiat.get('symbol', '₽')}\n\n"
-            
-            f"👤 <b>Продавец:</b> {order.get('first_name', 'User')}"
-        )
-        
-        if order.get('is_verified'):
-            card += " ✅"
-        
-        card += f"\n⭐ <b>Рейтинг:</b> {order.get('rating', 5.0):.1f} ({order.get('deals_completed', 0)} сделок)"
-        
-        if order.get('comment'):
-            card += f"\n📝 <b>Комментарий:</b> {order['comment']}"
-        
-        card += f"\n🕐 <b>Создан:</b> {order['created_at'][:16]}"
-    
-    return card
 
 # ============================================
-# БОТ И ДИСПЕТЧЕР
+# БОТ
 # ============================================
 
 storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=storage)
 
-# Временное хранилище
-user_data = {}
-
 # ============================================
-# ОБРАБОТЧИК КОМАНДЫ START
+# СТАРТ
 # ============================================
 
 @dp.message(Command("start"))
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message):
     user = message.from_user
     args = message.text.split()
     ref_code = args[1] if len(args) > 1 else None
     
-    # Регистрируем пользователя
-    referral_code = db.add_user(
-        user_id=user.id,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        referrer_code=ref_code
-    )
+    db.add_user(user.id, user.username, user.first_name, ref_code)
     
-    # Приветствие (БОМБИЧЕСКОЕ)
-    welcome_text = (
-        f"🌟 <b>ДОБРО ПОЖАЛОВАТЬ В MEGA P2P!</b> 🌟\n\n"
+    await message.answer(
         f"👋 <b>Привет, {user.first_name}!</b>\n\n"
-        f"🎮 <b>Здесь ты можешь:</b>\n"
-        f"├ 🔥 Покупать и продавать <b>игровую валюту</b>\n"
-        f"├ 💰 Торговать <b>криптовалютой</b> P2P\n"
-        f"├ 🤝 Безопасные сделки через <b>эскроу</b>\n"
-        f"└ ⭐ Зарабатывать на <b>рефералах</b>\n\n"
-        
-        f"📊 <b>Твоя реферальная ссылка:</b>\n"
-        f"<code>https://t.me/{(await bot.get_me()).username}?start={referral_code}</code>\n\n"
-        
-        f"👇 <b>Выбери раздел:</b>"
+        f"🎮 Здесь ты можешь:\n"
+        f"• Покупать и продавать игровую валюту\n"
+        f"• Торговать криптовалютой P2P\n"
+        f"• Безопасные сделки через гаранта\n\n"
+        f"👇 Выбери раздел:",
+        reply_markup=main_keyboard()
     )
-    
-    await message.answer(welcome_text, reply_markup=get_main_menu())
-    
-    # Отправляем уведомление админу
-    await notify_admin(f"👤 Новый пользователь: {user.first_name} (@{user.username})\nID: {user.id}")
 
 # ============================================
-# ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ
+# ГЛАВНОЕ МЕНЮ
 # ============================================
 
-@dp.message(lambda m: m.text == "🎮 ИГРОВАЯ БИРЖА")
-async def game_market(message: Message):
-    text = (
-        "🎮 <b>ИГРОВАЯ P2P БИРЖА</b>\n\n"
-        "🔥 <b>Популярные игры:</b>\n"
-    )
-    
-    for game_id, game in GAMES.items():
-        if game['popular']:
-            text += f"{game['icon']} {game['name']} — {game['currency']}\n"
-    
-    text += "\n👇 <b>Выбери действие:</b>"
-    
-    await message.answer(text, reply_markup=get_game_menu())
+@dp.message(lambda m: m.text == "🎮 Игры")
+async def games_section(message: Message):
+    await message.answer("🎮 <b>Выбери игру:</b>", reply_markup=games_keyboard())
 
-@dp.message(lambda m: m.text == "💰 КРИПТО-БИРЖА")
-async def crypto_market(message: Message):
-    text = (
-        "💰 <b>КРИПТО-БИРЖА P2P</b>\n\n"
-        "💎 <b>Доступные валюты:</b>\n"
-    )
-    
-    for curr_id, curr in CRYPTO_CURRENCIES.items():
-        text += f"{curr['icon']} {curr_id} ({curr['network']}) — {curr['min']}-{curr['max']}\n"
-    
-    text += "\n👇 <b>Выбери действие:</b>"
-    
-    await message.answer(text, reply_markup=get_crypto_menu())
+@dp.message(lambda m: m.text == "💰 Крипта")
+async def crypto_section(message: Message):
+    await message.answer("💰 <b>Выбери валюту:</b>", reply_markup=crypto_keyboard())
 
-@dp.message(lambda m: m.text == "📊 МОЙ ПРОФИЛЬ")
-async def my_profile(message: Message):
-    user_id = message.from_user.id
-    user = db.get_user(user_id)
-    
-    if not user:
-        await message.answer("❌ Ошибка загрузки профиля")
-        return
-    
-    rating = user['rating']
-    stars = "⭐" * int(rating) + "✨" * (5 - int(rating))
-    
-    text = (
-        f"👤 <b>ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ</b>\n\n"
-        
-        f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-        f"📱 <b>Username:</b> @{user['username'] if user['username'] else 'нет'}\n"
-        f"📅 <b>С нами:</b> {user['registered_at'][:10]}\n\n"
-        
-        f"⭐ <b>Рейтинг:</b> {rating:.1f} {stars}\n"
-        f"📊 <b>Сделок:</b> {user['deals_completed']} / {user['deals_total']}\n\n"
-        
-        f"💰 <b>Баланс (RUB):</b> {user['balance_rub']:.2f} ₽\n"
-    )
-    
-    if user['is_verified']:
-        text += f"\n✅ <b>Верифицированный продавец</b>\n"
-    
-    await message.answer(text, reply_markup=get_profile_keyboard(user_id))
-
-@dp.message(lambda m: m.text == "👥 РЕФЕРАЛЫ")
-async def referrals_section(message: Message):
+@dp.message(lambda m: m.text == "👤 Профиль")
+async def profile_section(message: Message):
     user = db.get_user(message.from_user.id)
-    
-    if not user:
-        return
-    
-    ref_link = f"https://t.me/{(await bot.get_me()).username}?start={user['referral_code']}"
-    
-    text = (
-        "👥 <b>РЕФЕРАЛЬНАЯ ПРОГРАММА</b>\n\n"
-        f"🔗 <b>Твоя ссылка:</b>\n"
-        f"<code>{ref_link}</code>\n\n"
-        
-        f"🎁 <b>Бонус:</b> {REFERRAL_BONUS}% от комиссии с каждой сделки реферала\n"
-        f"💰 <b>Заработано:</b> {user['referral_balance']:.2f} ₽\n\n"
-        
-        f"📊 <b>Статистика:</b>\n"
-        f"├ Приглашено: ...\n"
-        f"└ Активных: ...\n\n"
-        
-        f"👇 <b>Делись ссылкой и зарабатывай!</b>"
-    )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📤 Поделиться", switch_inline_query=f"🔥 Зарабатывай со мной! {ref_link}")
-    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
-    builder.adjust(1)
-    
-    await message.answer(text, reply_markup=builder.as_markup())
-
-@dp.message(lambda m: m.text == "⭐ ИЗБРАННОЕ")
-async def favorites_section(message: Message):
-    user_id = message.from_user.id
-    favorites = db.get_favorites(user_id)
-    
-    if not favorites:
-        await message.answer(
-            "⭐ <b>Избранное</b>\n\n"
-            "У тебя пока нет избранных ордеров.\n"
-            "Добавляй их звездочкой в объявлениях!",
-            reply_markup=get_back_to_main()
+    if user:
+        text = (
+            f"👤 <b>Твой профиль</b>\n\n"
+            f"📊 Сделок: {user['deals']}\n"
+            f"⭐ Рейтинг: {user['rating']}\n"
+            f"💰 Баланс: {user['balance']} ₽\n"
         )
-        return
-    
-    text = "⭐ <b>Твои избранные ордера:</b>\n\n"
-    
-    for fav in favorites[:5]:
-        if fav['order_type'] == 'game':
-            order = db.get_game_order(fav['order_id'])
-            if order:
-                text += f"🎮 {order['game_name']} — {order['amount']} {order['game_currency']}\n"
-        else:
-            order = db.get_crypto_order(fav['order_id'])
-            if order:
-                text += f"💰 {order['currency']} — {order['amount']}\n"
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📋 Все избранные", callback_data="favorites_all")
-    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
-    builder.adjust(1)
-    
-    await message.answer(text, reply_markup=builder.as_markup())
+        await message.answer(text, reply_markup=profile_keyboard())
 
-@dp.message(lambda m: m.text == "📞 ПОМОЩЬ")
+@dp.message(lambda m: m.text == "📞 Помощь")
 async def help_section(message: Message):
     text = (
-        "📞 <b>ЦЕНТР ПОМОЩИ</b>\n\n"
-        
-        "❓ <b>Часто задаваемые вопросы:</b>\n\n"
-        
-        "1️⃣ <b>Как проходит сделка?</b>\n"
-        "   • Находишь ордер\n"
-        "   • Нажимаешь «Купить»\n"
-        "   • Вводишь свои данные\n"
-        "   • Бот блокирует средства\n"
-        "   • Платишь продавцу\n"
-        "   • Получаешь товар\n\n"
-        
-        "2️⃣ <b>Что такое эскроу?</b>\n"
-        "   Бот выступает гарантом и блокирует\n"
-        "   средства продавца до подтверждения\n\n"
-        
-        "3️⃣ <b>Как долго ждать?</b>\n"
-        f"   На оплату даётся {ESCROW_TIME} минут\n\n"
-        
-        "4️⃣ <b>Спорные ситуации</b>\n"
-        "   Если что-то пошло не так,\n"
-        "   можно открыть спор и админ разберётся\n\n"
-        
-        "👨‍💻 <b>Связь с админом:</b>\n"
-        "   @p2p_support_bot"
+        "📞 <b>Помощь</b>\n\n"
+        "1. Найди ордер\n"
+        "2. Нажми «Купить»\n"
+        "3. Введи количество\n"
+        "4. Оплати продавцу\n"
+        "5. Подтверди получение\n\n"
+        f"⏱ Время на оплату: {ESCROW_TIME} минут\n"
+        f"💰 Комиссия: {COMMISSION}%\n\n"
+        "❓ Вопросы: @admin"
     )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📨 Написать админу", callback_data="support")
-    builder.button(text="🏠 Главное меню", callback_data="back_to_main")
-    builder.adjust(1)
-    
-    await message.answer(text, reply_markup=builder.as_markup())
+    await message.answer(text, reply_markup=back_keyboard())
 
 # ============================================
-# ОБРАБОТЧИКИ НАВИГАЦИИ
+# НАВИГАЦИЯ
 # ============================================
 
-@dp.callback_query(lambda c: c.data == "back_to_main")
-async def back_to_main(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(lambda c: c.data == "main_menu")
+async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.answer(
-        "🏠 <b>Главное меню</b>\n\nВыбери раздел:",
-        reply_markup=get_main_menu()
+        "🏠 <b>Главное меню</b>",
+        reply_markup=main_keyboard()
     )
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "back")
-async def go_back(callback: CallbackQuery, state: FSMContext):
+async def back_callback(callback: CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     
     if current_state:
-        await state.set_state(CreateGameOrder.choosing_game)
+        await state.clear()
         await callback.message.edit_text(
             "🎮 <b>Выбери игру:</b>",
-            reply_markup=get_game_menu()
+            reply_markup=games_keyboard()
+        )
+    else:
+        await callback.message.edit_text(
+            "🎮 <b>Выбери игру:</b>",
+            reply_markup=games_keyboard()
         )
     
     await callback.answer()
 
 # ============================================
-# ОБРАБОТЧИКИ ИГРОВОЙ БИРЖИ
+# ПРОСМОТР ОРДЕРОВ (ИГРЫ)
 # ============================================
 
 @dp.callback_query(lambda c: c.data.startswith('game_'))
@@ -1618,167 +591,356 @@ async def show_game_orders(callback: CallbackQuery):
     game_id = callback.data.replace('game_', '')
     game = GAMES[game_id]
     
-    orders = db.get_game_orders(game_id=game_id)
+    orders = db.get_active_orders(market_type='game', item_id=game_id)
     
     if not orders:
         await callback.message.edit_text(
             f"{game['icon']} <b>{game['name']}</b>\n\n"
-            f"Пока нет активных ордеров.\n"
+            f"Нет активных ордеров.\n"
             f"Создай первый! 🚀",
-            reply_markup=get_game_menu()
+            reply_markup=back_keyboard()
         )
         await callback.answer()
         return
     
-    text = f"{game['icon']} <b>{game['name']} — активные ордера:</b>\n\n"
-    
-    for order in orders[:5]:
-        text += f"{'📈' if order['type'] == 'sell' else '📉'} "
-        text += f"{order['amount']:.0f} {order['game_currency']} × {order['price_per_unit']:.2f}₽ = {order['total_price']:.0f}₽\n"
-        text += f"👤 {order['first_name']} ⭐{order['rating']:.1f}\n\n"
+    text = f"{game['icon']} <b>{game['name']} - ордера:</b>\n\n"
     
     builder = InlineKeyboardBuilder()
-    for order in orders[:3]:
+    
+    for order in orders[:5]:
+        emoji = "📈" if order['order_type'] == 'sell' else "📉"
+        text += f"{emoji} {order['amount']:.0f} {game['currency']} × {order['price']}₽ = {order['total']:.0f}₽\n"
+        
         builder.button(
-            text=f"{'📈' if order['type'] == 'sell' else '📉'} {order['amount']:.0f} {order['game_currency']}",
-            callback_data=f"view_game_order_{order['id']}"
+            text=f"{emoji} {order['amount']:.0f} {game['currency']}",
+            callback_data=f"view_order_{order['id']}"
         )
     
-    builder.adjust(1)
-    builder.row(
-        InlineKeyboardButton(text="➕ Создать ордер", callback_data=f"create_game_order_{game_id}"),
-        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_games")
-    )
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data=f"create_game_{game_id}"))
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data.startswith('view_game_order_'))
-async def view_game_order(callback: CallbackQuery):
-    order_id = int(callback.data.replace('view_game_order_', ''))
-    order = db.get_game_order(order_id)
+# ============================================
+# ПРОСМОТР ОРДЕРОВ (КРИПТА)
+# ============================================
+
+@dp.callback_query(lambda c: c.data.startswith('crypto_'))
+async def show_crypto_orders(callback: CallbackQuery):
+    curr_id = callback.data.replace('crypto_', '')
+    currency = CRYPTO_CURRENCIES[curr_id]
+    
+    orders = db.get_active_orders(market_type='crypto', item_id=curr_id)
+    
+    if not orders:
+        await callback.message.edit_text(
+            f"{currency['icon']} <b>{curr_id}</b>\n\n"
+            f"Нет активных ордеров.\n"
+            f"Создай первый! 🚀",
+            reply_markup=back_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    text = f"{currency['icon']} <b>{curr_id} - ордера:</b>\n\n"
+    
+    builder = InlineKeyboardBuilder()
+    
+    for order in orders[:5]:
+        emoji = "📈" if order['order_type'] == 'sell' else "📉"
+        text += f"{emoji} {order['amount']} {curr_id} × {order['price']}₽ = {order['total']:.0f}₽\n"
+        
+        builder.button(
+            text=f"{emoji} {order['amount']} {curr_id}",
+            callback_data=f"view_order_{order['id']}"
+        )
+    
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="➕ Создать ордер", callback_data=f"create_crypto_{curr_id}"))
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
+    
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+# ============================================
+# ПРОСМОТР ОРДЕРА
+# ============================================
+
+@dp.callback_query(lambda c: c.data.startswith('view_order_'))
+async def view_order(callback: CallbackQuery):
+    order_id = int(callback.data.replace('view_order_', ''))
+    order = db.get_order(order_id)
     
     if not order:
         await callback.answer("❌ Ордер не найден", show_alert=True)
         return
     
-    card = get_order_card(order, 'game')
+    if order['market_type'] == 'game':
+        game = GAMES[order['item_id']]
+        icon = game['icon']
+        currency = game['currency']
+    else:
+        currency = CRYPTO_CURRENCIES[order['item_id']]
+        icon = currency['icon']
+        currency = order['item_id']
+    
+    text = (
+        f"{icon} <b>{order['item_name']}</b>\n"
+        f"{'📈 ПРОДАЖА' if order['order_type'] == 'sell' else '📉 ПОКУПКА'}\n\n"
+        
+        f"💰 Количество: {order['amount']} {currency}\n"
+        f"💵 Цена: {order['price']} ₽\n"
+        f"💎 Сумма: {order['total']} ₽\n\n"
+    )
+    
+    if order['comment']:
+        text += f"📝 {order['comment']}\n\n"
+    
+    text += f"🕐 Создан: {order['created_at'][:16]}"
     
     builder = InlineKeyboardBuilder()
     
-    # Кнопка покупки/продажи
-    if order['type'] == 'sell':
-        builder.button(text="💎 Купить", callback_data=f"buy_game_{order_id}")
+    if order['order_type'] == 'sell':
+        builder.button(text="💎 Купить", callback_data=f"buy_{order_id}")
     else:
-        builder.button(text="💎 Продать", callback_data=f"sell_game_{order_id}")
+        builder.button(text="💎 Продать", callback_data=f"sell_{order_id}")
     
-    # Кнопка избранного
-    builder.button(text="⭐ В избранное", callback_data=f"fav_game_{order_id}")
+    builder.button(text="⭐ В избранное", callback_data=f"fav_{order_id}")
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"{order['market_type']}_{order['item_id']}"))
     
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"game_{order['game_id']}"))
-    
-    await callback.message.edit_text(card, reply_markup=builder.as_markup())
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data.startswith('buy_game_'))
-async def buy_game_order(callback: CallbackQuery, state: FSMContext):
-    order_id = int(callback.data.replace('buy_game_', ''))
-    order = db.get_game_order(order_id)
+# ============================================
+# СОЗДАНИЕ ОРДЕРА (ИГРЫ)
+# ============================================
+
+@dp.callback_query(lambda c: c.data.startswith('create_game_'))
+async def create_game_order_start(callback: CallbackQuery, state: FSMContext):
+    game_id = callback.data.replace('create_game_', '')
+    game = GAMES[game_id]
+    
+    await state.update_data(market_type='game', item_id=game_id, item_name=game['name'])
+    await state.set_state(CreateOrder.choosing_type)
+    
+    await callback.message.edit_text(
+        f"{game['icon']} <b>{game['name']}</b>\n\n"
+        f"Ты хочешь купить или продать?",
+        reply_markup=order_type_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(CreateOrder.choosing_type, lambda c: c.data.startswith('type_'))
+async def create_order_type(callback: CallbackQuery, state: FSMContext):
+    order_type = callback.data.replace('type_', '')
+    
+    await state.update_data(order_type=order_type)
+    await state.set_state(CreateOrder.entering_amount)
+    
+    await callback.message.edit_text(
+        f"💰 <b>Введи количество:</b>\n\n"
+        f"Минимальная сумма: {MIN_DEAL_AMOUNT} ₽"
+    )
+    await callback.answer()
+
+@dp.message(CreateOrder.entering_amount)
+async def create_order_amount(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text)
+        if amount <= 0:
+            raise ValueError
+    except:
+        await message.answer("❌ Введи число больше 0")
+        return
+    
+    await state.update_data(amount=amount)
+    await state.set_state(CreateOrder.entering_price)
+    
+    await message.answer(
+        f"💵 <b>Введи цену за единицу (в ₽):</b>"
+    )
+
+@dp.message(CreateOrder.entering_price)
+async def create_order_price(message: Message, state: FSMContext):
+    try:
+        price = float(message.text)
+        if price <= 0:
+            raise ValueError
+    except:
+        await message.answer("❌ Введи число больше 0")
+        return
+    
+    data = await state.get_data()
+    total = data['amount'] * price
+    
+    if total < MIN_DEAL_AMOUNT:
+        await message.answer(f"❌ Минимальная сумма сделки {MIN_DEAL_AMOUNT} ₽. Увеличь количество или цену.")
+        return
+    
+    await state.update_data(price=price)
+    await state.set_state(CreateOrder.entering_comment)
+    
+    await message.answer(
+        f"📝 <b>Добавь комментарий (или отправь «-» чтобы пропустить):</b>"
+    )
+
+@dp.message(CreateOrder.entering_comment)
+async def create_order_comment(message: Message, state: FSMContext):
+    comment = message.text if message.text != '-' else ''
+    
+    await state.update_data(comment=comment)
+    await state.set_state(CreateOrder.choosing_payment)
+    
+    await message.answer(
+        f"💳 <b>Выбери способ оплаты:</b>",
+        reply_markup=payment_keyboard()
+    )
+
+@dp.callback_query(CreateOrder.choosing_payment, lambda c: c.data.startswith('payment_'))
+async def create_order_payment(callback: CallbackQuery, state: FSMContext):
+    payment = callback.data.replace('payment_', '')
+    
+    await state.update_data(payment_method=payment)
+    await state.set_state(CreateOrder.confirm)
+    
+    data = await state.get_data()
+    total = data['amount'] * data['price']
+    
+    if data['market_type'] == 'game':
+        game = GAMES[data['item_id']]
+        icon = game['icon']
+        name = game['name']
+        currency = game['currency']
+    else:
+        currency = CRYPTO_CURRENCIES[data['item_id']]
+        icon = currency['icon']
+        name = data['item_id']
+        currency = data['item_id']
+    
+    text = (
+        f"{icon} <b>Проверь данные:</b>\n\n"
+        f"Тип: {'📈 Продажа' if data['order_type'] == 'sell' else '📉 Покупка'}\n"
+        f"Товар: {name}\n"
+        f"Количество: {data['amount']} {currency}\n"
+        f"Цена: {data['price']} ₽\n"
+        f"Сумма: {total} ₽\n"
+        f"Оплата: {PAYMENT_METHODS[data['payment_method']]['name']}\n"
+    )
+    
+    if data['comment']:
+        text += f"Комментарий: {data['comment']}\n"
+    
+    text += f"\n✅ Всё верно?"
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, создать", callback_data="confirm_order")
+    builder.button(text="❌ Нет, заново", callback_data="restart")
+    builder.adjust(2)
+    
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+@dp.callback_query(CreateOrder.confirm, lambda c: c.data == "confirm_order")
+async def confirm_order(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    
+    order_id = db.create_order(
+        user_id=callback.from_user.id,
+        market_type=data['market_type'],
+        item_id=data['item_id'],
+        item_name=data['item_name'],
+        order_type=data['order_type'],
+        amount=data['amount'],
+        price=data['price'],
+        comment=data['comment'],
+        payment_method=data['payment_method']
+    )
+    
+    await state.clear()
+    
+    await callback.message.edit_text(
+        f"✅ <b>Ордер создан!</b>\n\n"
+        f"ID: {order_id}\n"
+        f"Ты можешь найти его в списке ордеров.",
+        reply_markup=back_keyboard()
+    )
+    await callback.answer()
+
+# ============================================
+# ПОКУПКА
+# ============================================
+
+@dp.callback_query(lambda c: c.data.startswith('buy_'))
+async def buy_order(callback: CallbackQuery, state: FSMContext):
+    order_id = int(callback.data.replace('buy_', ''))
+    order = db.get_order(order_id)
     
     if not order or order['status'] != 'active':
         await callback.answer("❌ Ордер уже недоступен", show_alert=True)
         return
     
-    await state.update_data(order_id=order_id, order_type='game')
-    
-    await callback.message.edit_text(
-        f"🛒 <b>Покупка {order['game_name']}</b>\n\n"
-        f"💰 Доступно: {order['amount']} {order['game_currency']}\n"
-        f"💵 Цена: {order['price_per_unit']} ₽ за единицу\n\n"
-        f"📝 <b>Введи количество, которое хочешь купить:</b>"
-    )
-    
-    await state.set_state(CreateGameOrder.entering_amount)
-    await callback.answer()
-
-# ============================================
-# FSM ДЛЯ СОЗДАНИЯ ОРДЕРА (ИГРЫ)
-# ============================================
-
-@dp.callback_query(lambda c: c.data == "create_game_order")
-async def create_game_order_start(callback: CallbackQuery, state: FSMContext):
-    # Показываем список игр
-    builder = InlineKeyboardBuilder()
-    
-    for game_id, game in GAMES.items():
-        if game['popular']:
-            builder.button(
-                text=f"{game['icon']} {game['name']}",
-                callback_data=f"create_game_{game_id}"
-            )
-    
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_games"))
-    
-    await callback.message.edit_text(
-        "🎮 <b>Выбери игру для создания ордера:</b>",
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data.startswith('create_game_'))
-async def create_game_order_type(callback: CallbackQuery, state: FSMContext):
-    game_id = callback.data.replace('create_game_', '')
-    
-    await state.update_data(game_id=game_id)
-    await state.set_state(CreateGameOrder.choosing_type)
-    
-    await callback.message.edit_text(
-        f"{GAMES[game_id]['icon']} <b>{GAMES[game_id]['name']}</b>\n\n"
-        f"Ты хочешь продать или купить?",
-        reply_markup=get_order_type_keyboard()
-    )
-    await callback.answer()
-
-@dp.callback_query(CreateGameOrder.choosing_type, lambda c: c.data.startswith('order_type_'))
-async def create_game_order_amount(callback: CallbackQuery, state: FSMContext):
-    order_type = callback.data.replace('order_type_', '')
-    
-    await state.update_data(order_type=order_type)
-    await state.set_state(CreateGameOrder.entering_amount)
+    await state.update_data(order_id=order_id)
     
     await callback.message.edit_text(
         f"💰 <b>Введи количество:</b>\n\n"
-        f"Минимум: {MIN_DEAL_AMOUNT} ₽ в эквиваленте"
+        f"Доступно: {order['amount']}\n"
+        f"Цена: {order['price']} ₽",
+        reply_markup=back_keyboard()
     )
     await callback.answer()
 
 # ============================================
-# ЗАПУСК БОТА
+# ПРОФИЛЬ
+# ============================================
+
+@dp.callback_query(lambda c: c.data == "my_trades")
+async def my_trades(callback: CallbackQuery):
+    trades = db.get_user_trades(callback.from_user.id)
+    
+    if not trades:
+        await callback.message.edit_text(
+            "📊 <b>Мои сделки</b>\n\n"
+            "У тебя пока нет сделок.",
+            reply_markup=back_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    text = "📊 <b>Мои сделки:</b>\n\n"
+    for trade in trades:
+        status = "✅" if trade['status'] == 'completed' else "⏳"
+        text += f"{status} {trade['total']} ₽ - {trade['created_at'][:16]}\n"
+    
+    await callback.message.edit_text(text, reply_markup=back_keyboard())
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "balance")
+async def show_balance(callback: CallbackQuery):
+    user = db.get_user(callback.from_user.id)
+    await callback.message.edit_text(
+        f"💰 <b>Твой баланс:</b>\n\n"
+        f"{user['balance']} ₽",
+        reply_markup=back_keyboard()
+    )
+    await callback.answer()
+
+# ============================================
+# ЗАПУСК
 # ============================================
 
 async def main():
-    logging.info("🚀 ЗАПУСК MEGA P2P БОТА...")
+    print("\n" + "="*50)
+    print("🔥 P2P БОТ ЗАПУСКАЕТСЯ...")
+    print("="*50)
     
-    print("\n" + "="*60)
-    print("🔥 MEGA P2P БОТ С БОМБИЧЕСКИМ ДИЗАЙНОМ")
-    print("="*60)
-    print(f"🤖 Bot: @{(await bot.get_me()).username}")
-    print(f"👑 Admin ID: {ADMIN_ID}")
-    print(f"🎮 Игр: {len(GAMES)}")
-    print(f"💰 Криптовалют: {len(CRYPTO_CURRENCIES)}")
-    print("="*60 + "\n")
+    me = await bot.get_me()
+    print(f"✅ Бот: @{me.username}")
+    print(f"👑 Админ: {ADMIN_ID}")
+    print("="*50 + "\n")
     
-    await bot.send_message(
-        ADMIN_ID,
-        "🚀 <b>MEGA P2P БОТ ЗАПУЩЕН!</b>\n\n"
-        f"🎮 Игр: {len(GAMES)}\n"
-        f"💰 Криптовалют: {len(CRYPTO_CURRENCIES)}\n"
-        f"⚡ Комиссия: {COMMISSION}%\n\n"
-        f"📊 Всё работает!"
-    )
-    
+    await bot.send_message(ADMIN_ID, "🚀 <b>Бот запущен и готов к работе!</b>")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
