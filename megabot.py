@@ -61,7 +61,7 @@ from aiogram.enums import ParseMode, ChatMemberStatus
 
 BOT_TOKEN = "8339352233:AAGixj9izEbOVKHvhpKeTd_4_Y2CP-f-ZhE"
 ADMIN_ID = 2091630272
-CHANNEL_ID = -1003664296821  # ID твоего канала
+CHANNEL_ID = -1001234567890  # ID твоего канала
 
 # ============================================
 # ⚡ НАСТРОЙКИ ПЛАТФОРМЫ ⚡
@@ -72,7 +72,7 @@ ESCROW_TIME = 60  # Время на оплату (минут)
 MIN_AMOUNT = 100  # Минимальная сумма сделки (руб)
 MAX_AMOUNT = 1000000  # Максимальная сумма сделки (руб)
 REFERRAL_BONUS = 10  # Бонус рефереру (%)
-SUPPORT_USERNAME = "@GhostiPeeK_2"
+SUPPORT_USERNAME = "p2p_support"
 BOT_VERSION = "6.0 - АБСОЛЮТНЫЙ РАЗЪЕБ"
 WELCOME_BONUS = 100  # Приветственный бонус (руб)
 DAILY_BONUS = 10  # Ежедневный бонус (руб)
@@ -130,7 +130,6 @@ PAYMENT_METHODS = [
     {"id": "qiwi", "name": "Qiwi", "icon": "📱", "description": "Перевод на Qiwi кошелёк"},
     {"id": "cash", "name": "Наличные", "icon": "💵", "description": "При личной встрече"},
     {"id": "crypto", "name": "Крипта", "icon": "₿", "description": "Перевод USDT/TON/BTC"},
-    {"id": "sbp", "name": "СБП", "icon": "💳", "description": "Мгновенный перевод по номеру телефона"},
     {"id": "wise", "name": "Wise", "icon": "🌍", "description": "Международный перевод"},
 ]
 
@@ -212,6 +211,7 @@ class Database:
                 game_id TEXT,
                 game_name TEXT,
                 game_icon TEXT,
+                game_currency TEXT,
                 order_type TEXT,
                 amount REAL,
                 price REAL,
@@ -593,11 +593,11 @@ class Database:
         
         self.cursor.execute('''
             INSERT INTO game_orders 
-            (user_id, game_id, game_name, game_icon, order_type, amount, price, total, 
+            (user_id, game_id, game_name, game_icon, game_currency, order_type, amount, price, total, 
              min_amount, comment, payment_method, created_at, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            user_id, game_id, game['name'], game['icon'], order_type, amount, price, total,
+            user_id, game_id, game['name'], game['icon'], game['currency'], order_type, amount, price, total,
             min_amount, comment, payment_method, datetime.now(),
             datetime.now() + timedelta(hours=24)
         ))
@@ -640,18 +640,19 @@ class Database:
                 'game_id': row[2],
                 'game_name': row[3],
                 'game_icon': row[4],
-                'order_type': row[5],
-                'amount': row[6],
-                'price': row[7],
-                'total': row[8],
-                'min_amount': row[9],
-                'comment': row[10],
-                'payment_method': row[11],
-                'status': row[12],
-                'created_at': row[13],
-                'expires_at': row[14],
-                'views': row[15],
-                'favorites': row[16]
+                'game_currency': row[5],
+                'order_type': row[6],
+                'amount': row[7],
+                'price': row[8],
+                'total': row[9],
+                'min_amount': row[10],
+                'comment': row[11],
+                'payment_method': row[12],
+                'status': row[13],
+                'created_at': row[14],
+                'expires_at': row[15],
+                'views': row[16],
+                'favorites': row[17]
             })
         return orders
     
@@ -668,18 +669,19 @@ class Database:
                 'game_id': row[2],
                 'game_name': row[3],
                 'game_icon': row[4],
-                'order_type': row[5],
-                'amount': row[6],
-                'price': row[7],
-                'total': row[8],
-                'min_amount': row[9],
-                'comment': row[10],
-                'payment_method': row[11],
-                'status': row[12],
-                'created_at': row[13],
-                'expires_at': row[14],
-                'views': row[15],
-                'favorites': row[16]
+                'game_currency': row[5],
+                'order_type': row[6],
+                'amount': row[7],
+                'price': row[8],
+                'total': row[9],
+                'min_amount': row[10],
+                'comment': row[11],
+                'payment_method': row[12],
+                'status': row[13],
+                'created_at': row[14],
+                'expires_at': row[15],
+                'views': row[16],
+                'favorites': row[17]
             }
         return None
     
@@ -1939,7 +1941,7 @@ async def show_game_orders(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     for order in orders[:4]:
-        emoji = "📈" if order['order_type'] == 'sell' else "📉'
+        emoji = "📈" if order['order_type'] == 'sell' else "📉"
         builder.button(
             text=f"{emoji} {order['amount']:.0f} {game['currency']}",
             callback_data=f"view_game_order_{order['id']}"
@@ -2037,7 +2039,7 @@ async def show_crypto_orders(callback: CallbackQuery):
     
     for order in orders[:5]:
         emoji = "📈" if order['order_type'] == 'sell' else "📉"
-        type_text = "ПРОДАЖА" if order['order_type'] == 'sell' else "ПОКУПКА'
+        type_text = "ПРОДАЖА" if order['order_type'] == 'sell' else "ПОКУПКА"
         
         text += f"{emoji} <b>{type_text}</b>\n"
         text += f"├ {order['amount']} {crypto_id.upper()} × {order['price']}₽ = {order['total_fiat']:.0f}₽\n"
@@ -2045,7 +2047,7 @@ async def show_crypto_orders(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     for order in orders[:4]:
-        emoji = "📈" if order['order_type'] == 'sell' else "📉'
+        emoji = "📈" if order['order_type'] == 'sell' else "📉"
         builder.button(
             text=f"{emoji} {order['amount']} {crypto_id.upper()}",
             callback_data=f"view_crypto_order_{order['id']}"
@@ -2073,8 +2075,8 @@ async def view_crypto_order(callback: CallbackQuery):
     is_owner = (order['user_id'] == callback.from_user.id)
     is_favorite = any(f['order']['id'] == order_id and f['type'] == 'crypto' for f in favorites)
     
-    emoji = "📈" if order['order_type'] == 'sell' else "📉'
-    type_text = "ПРОДАЖА" if order['order_type'] == 'sell' else "ПОКУПКА'
+    emoji = "📈" if order['order_type'] == 'sell' else "📉"
+    type_text = "ПРОДАЖА" if order['order_type'] == 'sell' else "ПОКУПКА"
     
     text = (
         f"{order['currency_icon']} <b>{order['currency_name']}</b>\n"
